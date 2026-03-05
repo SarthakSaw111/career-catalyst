@@ -13,12 +13,15 @@ import ProgressPage from "./pages/ProgressPage";
 import SettingsPage from "./pages/SettingsPage";
 import ModuleBuilderPage from "./pages/ModuleBuilderPage";
 import GenericModulePage from "./pages/GenericModulePage";
+import AuthPage from "./pages/AuthPage";
+import { isSupabaseConnected } from "./services/supabase";
 
 function AppContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { loading, profile, chatOpen } = useApp();
+  const [authSkipped, setAuthSkipped] = useState(false);
+  const { loading, authLoading, authUser, profile, chatOpen } = useApp();
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="min-h-screen bg-dark-950 flex items-center justify-center">
         <div className="text-center">
@@ -29,6 +32,11 @@ function AppContent() {
         </div>
       </div>
     );
+  }
+
+  // Show auth page if Supabase is configured but user is not signed in
+  if (isSupabaseConnected() && !authUser && !authSkipped) {
+    return <AuthPage onSkip={() => setAuthSkipped(true)} />;
   }
 
   return (

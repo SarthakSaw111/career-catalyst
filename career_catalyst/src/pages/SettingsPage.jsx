@@ -12,6 +12,7 @@ import {
   Cpu,
   Brain,
   Database,
+  LogOut,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import {
@@ -22,12 +23,27 @@ import {
   getThinkingConfig,
   setThinking,
 } from "../services/gemini";
+import {
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_ANON_KEY,
+  DEFAULT_GEMINI_API_KEY,
+} from "../config";
 
 export default function SettingsPage() {
-  const { profile, updateProfile, settings, updateSettings, geminiReady } =
-    useApp();
+  const {
+    profile,
+    updateProfile,
+    settings,
+    updateSettings,
+    geminiReady,
+    authUser,
+    handleSignOut,
+    supabaseReady,
+  } = useApp();
   const [name, setName] = useState(profile?.name || "Sarthak");
-  const [apiKey, setApiKey] = useState(profile?.apiKey || "");
+  const [apiKey, setApiKey] = useState(
+    profile?.apiKey || DEFAULT_GEMINI_API_KEY || "",
+  );
   const [dailyGoal, setDailyGoal] = useState(settings.dailyGoalMinutes);
   const [dailyProblems, setDailyProblems] = useState(settings.dailyProblems);
   const [saved, setSaved] = useState(false);
@@ -37,8 +53,12 @@ export default function SettingsPage() {
   const [thinkingBudgetVal, setThinkingBudgetVal] = useState(
     getThinkingConfig().budget,
   );
-  const [supabaseUrl, setSupabaseUrl] = useState(profile?.supabaseUrl || "");
-  const [supabaseKey, setSupabaseKey] = useState(profile?.supabaseKey || "");
+  const [supabaseUrl, setSupabaseUrl] = useState(
+    profile?.supabaseUrl || DEFAULT_SUPABASE_URL || "",
+  );
+  const [supabaseKey, setSupabaseKey] = useState(
+    profile?.supabaseKey || DEFAULT_SUPABASE_ANON_KEY || "",
+  );
 
   const handleSave = () => {
     updateProfile({ name, apiKey, supabaseUrl, supabaseKey });
@@ -343,6 +363,33 @@ export default function SettingsPage() {
             Run the SQL schema (supabase_schema.sql) in your Supabase dashboard
             first.
           </p>
+
+          {/* Auth Status */}
+          {authUser && (
+            <div className="mt-4 pt-4 border-t border-dark-600/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-dark-200">
+                    Signed in as{" "}
+                    <span className="text-white font-medium">
+                      {authUser.email}
+                    </span>
+                  </p>
+                  <p className="text-[10px] text-dark-400 mt-0.5">
+                    {supabaseReady
+                      ? "✅ Data synced to cloud"
+                      : "⏳ Connecting..."}
+                  </p>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center gap-1.5 transition-all"
+                >
+                  <LogOut className="w-3 h-3" /> Sign Out
+                </button>
+              </div>
+            </div>
+          )}
         </motion.div>
 
         {/* Save */}

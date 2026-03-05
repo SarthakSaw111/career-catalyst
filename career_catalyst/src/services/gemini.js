@@ -7,6 +7,45 @@ let currentModelId = "gemini-2.5-flash";
 let thinkingEnabled = true;
 let thinkingBudget = 2048;
 
+// ─── Token Usage Tracking ───
+const tokenUsage = {
+  sessionTotal: { prompt: 0, completion: 0, total: 0, thinking: 0 },
+  calls: [], // last 50 calls
+  listeners: new Set(),
+};
+
+function trackUsage(response) {
+  const meta = response?.usageMetadata;
+  if (!meta) return;
+  const entry = {
+    prompt: meta.promptTokenCount || 0,
+    completion: meta.candidatesTokenCount || 0,
+    total: meta.totalTokenCount || 0,
+    thinking: meta.thoughtsTokenCount || 0,
+    model: currentModelId,
+    timestamp: Date.now(),
+  };
+  tokenUsage.sessionTotal.prompt += entry.prompt;
+  tokenUsage.sessionTotal.completion += entry.completion;
+  tokenUsage.sessionTotal.total += entry.total;
+  tokenUsage.sessionTotal.thinking += entry.thinking;
+  tokenUsage.calls.push(entry);
+  if (tokenUsage.calls.length > 50) tokenUsage.calls.shift();
+  // Notify listeners
+  tokenUsage.listeners.forEach((fn) =>
+    fn({ ...tokenUsage.sessionTotal, lastCall: entry }),
+  );
+}
+
+export function getTokenUsage() {
+  return { ...tokenUsage.sessionTotal, calls: [...tokenUsage.calls] };
+}
+
+export function onTokenUsageUpdate(callback) {
+  tokenUsage.listeners.add(callback);
+  return () => tokenUsage.listeners.delete(callback);
+}
+
 export const AVAILABLE_MODELS = [
   {
     id: "gemini-2.5-flash",
@@ -123,6 +162,7 @@ export async function sendPrompt(systemPrompt, userMessage, options = {}) {
       contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
       generationConfig: buildGenerationConfig(options),
     });
+    trackUsage(result.response);
     return result.response.text();
   } catch (err) {
     console.error("Gemini API error:", err);
@@ -162,6 +202,7 @@ export async function sendChatMessage(sessionId, systemPrompt, message) {
   try {
     const chat = getChatSession(sessionId, systemPrompt);
     const result = await chat.sendMessage(message);
+    trackUsage(result.response);
     return result.response.text();
   } catch (err) {
     console.error("Chat error:", err);

@@ -6,7 +6,12 @@ let userId = null;
 export function initSupabase(url, anonKey) {
   if (!url || !anonKey) return null;
   try {
-    supabase = createClient(url, anonKey);
+    supabase = createClient(url, anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    });
     return supabase;
   } catch (err) {
     console.error("Supabase init error:", err);
@@ -19,26 +24,96 @@ export function getSupabase() {
 }
 
 export function isSupabaseReady() {
+  return supabase !== null && userId !== null;
+}
+
+export function isSupabaseConnected() {
   return supabase !== null;
 }
 
-// ─── Auth (anonymous or simple) ───
-export async function ensureUser(profileName) {
-  if (!supabase) return null;
-  // Use a device-specific ID stored in localStorage
-  let deviceId = localStorage.getItem("cc_device_id");
-  if (!deviceId) {
-    deviceId = crypto.randomUUID();
-    localStorage.setItem("cc_device_id", deviceId);
+// ─── Auth ───
+export async function signUp(email, password) {
+  if (!supabase) throw new Error("Supabase not initialized");
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) throw error;
+  if (data?.user) {
+    userId = data.user.id;
+    // Create profile row
+    await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: userId,
+          name: email.split("@")[0],
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      );
   }
-  userId = deviceId;
+  return data;
+}
 
-  // Upsert profile row
+export async function signIn(email, password) {
+  if (!supabase) throw new Error("Supabase not initialized");
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (error) throw error;
+  if (data?.user) {
+    userId = data.user.id;
+    // Ensure profile exists
+    await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: userId,
+          name: email.split("@")[0],
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      );
+  }
+  return data;
+}
+
+export async function signOut() {
+  if (!supabase) return;
+  await supabase.auth.signOut();
+  userId = null;
+}
+
+export async function getSession() {
+  if (!supabase) return null;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (session?.user) {
+    userId = session.user.id;
+  }
+  return session;
+}
+
+export function onAuthStateChange(callback) {
+  if (!supabase) return { data: { subscription: { unsubscribe: () => {} } } };
+  return supabase.auth.onAuthStateChange((event, session) => {
+    if (session?.user) {
+      userId = session.user.id;
+    } else {
+      userId = null;
+    }
+    callback(event, session);
+  });
+}
+
+// Legacy compat: ensureUser for existing code
+export async function ensureUser(profileName) {
+  if (!supabase || !userId) return null;
   const { data, error } = await supabase
     .from("profiles")
     .upsert(
       {
-        id: deviceId,
+        id: userId,
         name: profileName || "User",
         updated_at: new Date().toISOString(),
       },
@@ -46,13 +121,12 @@ export async function ensureUser(profileName) {
     )
     .select()
     .single();
-
   if (error) console.error("Profile upsert error:", error);
   return data;
 }
 
 export function getUserId() {
-  return userId || localStorage.getItem("cc_device_id");
+  return userId;
 }
 
 // ─── Generated Content Cache ───

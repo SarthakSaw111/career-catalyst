@@ -226,16 +226,34 @@ export function getLocalModules() {
 
 export function saveLocalModules(modules) {
   setItem("cc_modules", modules);
+  // Also persist to Supabase progress table for recovery
+  if (sb.isSupabaseReady()) {
+    sb.saveProgress("_custom_modules", { modules });
+  }
 }
 
 // Sync: pull modules from Supabase into local
 export async function syncModulesFromSupabase() {
   if (!sb.isSupabaseReady()) return getLocalModules();
+
+  // Try the modules table first
   const remote = await sb.getModules();
   if (remote && remote.length > 0) {
     saveLocalModules(remote);
     return remote;
   }
+
+  // Fallback: check progress-based backup
+  const backup = await sb.getProgress("_custom_modules");
+  if (backup?.modules?.length > 0) {
+    setItem("cc_modules", backup.modules);
+    // Re-save to modules table
+    for (const mod of backup.modules) {
+      await sb.createModule(mod);
+    }
+    return backup.modules;
+  }
+
   return getLocalModules();
 }
 
@@ -243,23 +261,44 @@ export async function syncModulesFromSupabase() {
 export async function syncFromSupabase() {
   if (!sb.isSupabaseReady()) return;
 
+  // Sync settings (includes API key if saved)
+  const remoteSettings = await sb.getRemoteSettings();
+  if (remoteSettings) {
+    // Extract custom roadmaps if stored in settings
+    if (remoteSettings._customRoadmaps) {
+      const localRoadmaps = getItem(CUSTOM_ROADMAPS_KEY) || {};
+      const merged = { ...localRoadmaps, ...remoteSettings._customRoadmaps };
+      setItem(CUSTOM_ROADMAPS_KEY, merged);
+    }
+
+    // Merge settings into localStorage (exclude internal keys)
+    const { _customRoadmaps, ...cleanSettings } = remoteSettings;
+    const localSettings = getSettings();
+    const mergedSettings = { ...localSettings, ...cleanSettings };
+    setItem(STORAGE_KEYS.SETTINGS, mergedSettings);
+
+    // If settings contain API key, restore it to profile
+    if (remoteSettings.apiKey) {
+      const profile = getProfile() || {};
+      if (!profile.apiKey) {
+        profile.apiKey = remoteSettings.apiKey;
+        if (remoteSettings.profileName)
+          profile.name = remoteSettings.profileName;
+        saveProfile(profile);
+      }
+    }
+  }
+
   // Sync streak
   const remoteStreak = await sb.getRemoteStreak();
   if (remoteStreak) {
     const localStreak = getStreakData();
-    // Merge: take the one with more active days
     if (
       (remoteStreak.activeDays?.length || 0) >
       (localStreak.activeDays?.length || 0)
     ) {
       setItem(STORAGE_KEYS.STREAK_DATA, remoteStreak);
     }
-  }
-
-  // Sync settings
-  const remoteSettings = await sb.getRemoteSettings();
-  if (remoteSettings) {
-    setItem(STORAGE_KEYS.SETTINGS, remoteSettings);
   }
 
   // Sync progress for known modules
@@ -290,10 +329,17 @@ export function saveCustomRoadmap(moduleSlug, roadmap) {
   const all = getItem(CUSTOM_ROADMAPS_KEY) || {};
   all[moduleSlug] = roadmap;
   setItem(CUSTOM_ROADMAPS_KEY, all);
+  // Sync to Supabase as part of settings (survives cache clears)
+  if (sb.isSupabaseReady()) {
+    sb.saveRemoteSettings({ ...getSettings(), _customRoadmaps: all });
+  }
 }
 
 export function resetRoadmapToDefault(moduleSlug) {
   const all = getItem(CUSTOM_ROADMAPS_KEY) || {};
   delete all[moduleSlug];
   setItem(CUSTOM_ROADMAPS_KEY, all);
+  if (sb.isSupabaseReady()) {
+    sb.saveRemoteSettings({ ...getSettings(), _customRoadmaps: all });
+  }
 }

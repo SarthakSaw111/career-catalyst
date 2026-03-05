@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
+import TokenTracker from "../shared/TokenTracker";
 import {
   LayoutDashboard,
   Code2,
@@ -17,6 +18,7 @@ import {
   Zap,
   PlusCircle,
   BookOpen,
+  LogOut,
 } from "lucide-react";
 
 const iconMap = {
@@ -59,7 +61,14 @@ const bottomNavItems = [
 ];
 
 export default function Sidebar({ collapsed, setCollapsed }) {
-  const { streak, setChatOpen, allModules, customModules } = useApp();
+  const {
+    streak,
+    setChatOpen,
+    allModules,
+    customModules,
+    authUser,
+    handleSignOut,
+  } = useApp();
 
   // Build nav items dynamically:
   // 1. Dashboard
@@ -252,31 +261,64 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       </nav>
 
       {/* Bottom actions */}
-      <div className="p-3 border-t border-dark-600/50 space-y-2">
-        <button
-          onClick={() => setChatOpen(true)}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
+      <div className="border-t border-dark-600/50">
+        {/* Token tracker */}
+        {!collapsed && (
+          <div className="pt-2">
+            <TokenTracker />
+          </div>
+        )}
+
+        <div className="p-3 space-y-2">
+          <button
+            onClick={() => setChatOpen(true)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
             bg-brand-indigo/10 text-brand-indigo-light hover:bg-brand-indigo/20 transition-all
             ${collapsed ? "justify-center" : ""}`}
-          title="AI Chat"
-        >
-          <MessageCircle className="w-5 h-5 flex-shrink-0" />
-          {!collapsed && <span className="text-sm font-medium">AI Chat</span>}
-        </button>
+            title="AI Chat"
+          >
+            <MessageCircle className="w-5 h-5 flex-shrink-0" />
+            {!collapsed && <span className="text-sm font-medium">AI Chat</span>}
+          </button>
 
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg
+          {/* Auth info + Sign Out */}
+          {authUser && (
+            <div className={`${collapsed ? "flex justify-center" : ""}`}>
+              {!collapsed && (
+                <p
+                  className="text-[10px] text-dark-400 px-3 mb-1 truncate"
+                  title={authUser.email}
+                >
+                  {authUser.email}
+                </p>
+              )}
+              <button
+                onClick={handleSignOut}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl
+                text-dark-300 hover:text-red-400 hover:bg-red-500/10 transition-all
+                ${collapsed ? "justify-center" : ""}`}
+                title={collapsed ? "Sign Out" : ""}
+              >
+                <LogOut className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span className="text-xs">Sign Out</span>}
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg
             text-dark-300 hover:text-white hover:bg-dark-700/50 transition-all
             ${collapsed ? "justify-center" : ""}`}
-        >
-          {collapsed ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <ChevronLeft className="w-4 h-4" />
-          )}
-          {!collapsed && <span className="text-xs">Collapse</span>}
-        </button>
+          >
+            {collapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" />
+            )}
+            {!collapsed && <span className="text-xs">Collapse</span>}
+          </button>
+        </div>
       </div>
     </aside>
   );

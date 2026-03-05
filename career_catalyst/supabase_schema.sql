@@ -1,5 +1,19 @@
--- CareerCatalyst Supabase Schema
+-- CareerCatalyst Supabase Schema v2 (with Supabase Auth)
 -- Run this in your Supabase SQL Editor (https://supabase.com/dashboard → SQL Editor)
+-- 
+-- IMPORTANT: This schema uses Supabase Auth. Users sign up with email/password.
+-- The user_id references auth.users.id (UUID).
+
+-- Drop old permissive policies if upgrading from v1
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Allow all for profiles" ON profiles;
+  DROP POLICY IF EXISTS "Allow all for modules" ON modules;
+  DROP POLICY IF EXISTS "Allow all for generated_content" ON generated_content;
+  DROP POLICY IF EXISTS "Allow all for progress" ON progress;
+  DROP POLICY IF EXISTS "Allow all for settings" ON settings;
+  DROP POLICY IF EXISTS "Allow all for streaks" ON streaks;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
 
 -- Profiles
 CREATE TABLE IF NOT EXISTS profiles (
@@ -12,14 +26,14 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- Modules (both built-in and user-created learning modules)
 CREATE TABLE IF NOT EXISTS modules (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   slug TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
   icon TEXT DEFAULT '📘',
   color TEXT DEFAULT 'brand-indigo',
-  module_type TEXT DEFAULT 'learn',  -- learn, interview, practice
-  roadmap JSONB NOT NULL DEFAULT '[]',  -- array of sections with topics/subtopics
+  module_type TEXT DEFAULT 'learn',
+  roadmap JSONB NOT NULL DEFAULT '[]',
   is_builtin BOOLEAN DEFAULT FALSE,
   sort_order INTEGER DEFAULT 100,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -27,10 +41,10 @@ CREATE TABLE IF NOT EXISTS modules (
   UNIQUE(user_id, slug)
 );
 
--- Generated content cache (all AI-generated content stored here)
+-- Generated content cache
 CREATE TABLE IF NOT EXISTS generated_content (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   content_key TEXT NOT NULL,
   content TEXT NOT NULL,
   module TEXT,
@@ -42,17 +56,17 @@ CREATE TABLE IF NOT EXISTS generated_content (
 -- Progress tracking per module
 CREATE TABLE IF NOT EXISTS progress (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   module TEXT NOT NULL,
   data JSONB NOT NULL DEFAULT '{}',
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, module)
 );
 
--- Settings
+-- Settings (includes API keys, preferences — persists across cache clears)
 CREATE TABLE IF NOT EXISTS settings (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   data JSONB NOT NULL DEFAULT '{}',
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id)
@@ -61,7 +75,7 @@ CREATE TABLE IF NOT EXISTS settings (
 -- Streak data
 CREATE TABLE IF NOT EXISTS streaks (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id TEXT REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
   data JSONB NOT NULL DEFAULT '{}',
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id)
@@ -80,12 +94,35 @@ ALTER TABLE progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE streaks ENABLE ROW LEVEL SECURITY;
 
--- Policies: allow all operations for now (device-id based, no auth)
--- In production, use Supabase Auth and restrict to authenticated users
+-- Auth-based RLS: users can only access their own data
+-- auth.uid()::text matches user_id stored as TEXT
 
-CREATE POLICY "Allow all for profiles" ON profiles FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for modules" ON modules FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for generated_content" ON generated_content FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for progress" ON progress FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for settings" ON settings FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for streaks" ON streaks FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Users manage own profile"
+  ON profiles FOR ALL
+  USING (id = auth.uid()::text)
+  WITH CHECK (id = auth.uid()::text);
+
+CREATE POLICY "Users manage own modules"
+  ON modules FOR ALL
+  USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY "Users manage own content"
+  ON generated_content FOR ALL
+  USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY "Users manage own progress"
+  ON progress FOR ALL
+  USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY "Users manage own settings"
+  ON settings FOR ALL
+  USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY "Users manage own streaks"
+  ON streaks FOR ALL
+  USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
