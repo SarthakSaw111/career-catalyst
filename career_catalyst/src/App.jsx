@@ -11,6 +11,8 @@ import InterviewPage from "./pages/InterviewPage";
 import EnglishPage from "./pages/EnglishPage";
 import ProgressPage from "./pages/ProgressPage";
 import SettingsPage from "./pages/SettingsPage";
+import ModuleBuilderPage from "./pages/ModuleBuilderPage";
+import GenericModulePage from "./pages/GenericModulePage";
 
 function AppContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -50,6 +52,8 @@ function AppContent() {
           <Route path="/english" element={<EnglishPage />} />
           <Route path="/progress" element={<ProgressPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/modules" element={<ModuleBuilderPage />} />
+          <Route path="/module/:slug" element={<GenericModulePage />} />
         </Routes>
       </main>
 

@@ -19,30 +19,10 @@ import {
   resetChatSession,
 } from "../../services/gemini";
 import { PROMPTS } from "../../services/prompts";
+import * as storage from "../../store/storage";
 import MarkdownRenderer from "../shared/MarkdownRenderer";
 import LoadingDots from "../shared/LoadingDots";
 import GenerationConfigBar from "../shared/GenerationConfigBar";
-
-const SAVED_CONTENT_KEY = "cc_saved_content";
-
-function getSavedContent(topicId, type) {
-  try {
-    const all = JSON.parse(localStorage.getItem(SAVED_CONTENT_KEY) || "{}");
-    return all[`${topicId}_${type}`] || null;
-  } catch {
-    return null;
-  }
-}
-
-function saveContent(topicId, type, content) {
-  try {
-    const all = JSON.parse(localStorage.getItem(SAVED_CONTENT_KEY) || "{}");
-    all[`${topicId}_${type}`] = { content, savedAt: new Date().toISOString() };
-    localStorage.setItem(SAVED_CONTENT_KEY, JSON.stringify(all));
-  } catch (e) {
-    console.error("Save error:", e);
-  }
-}
 
 export default function DSATopicView({ topic, onBack }) {
   const { dsaProgress, updateDSAProgress, geminiReady } = useApp();
@@ -65,13 +45,15 @@ export default function DSATopicView({ topic, onBack }) {
   const [difficulty, setDifficulty] = useState("medium");
   const [contentSaved, setContentSaved] = useState(false);
 
-  // Load previously saved content when concept changes
+  // Load previously cached content when concept changes
   useEffect(() => {
     if (selectedConcept) {
-      const saved = getSavedContent(topic.id, `learn_${selectedConcept}`);
-      if (saved && !learnContent) {
-        setLearnContent(saved.content);
-      }
+      const key = `dsa:${topic.id}:learn:${selectedConcept}`;
+      storage.getCachedContent(key).then((cached) => {
+        if (cached && !learnContent) {
+          setLearnContent(cached.content);
+        }
+      });
     }
   }, [selectedConcept]);
 
@@ -83,9 +65,22 @@ export default function DSATopicView({ topic, onBack }) {
 
   // Learn a concept
   const handleLearn = useCallback(
-    async (concept) => {
+    async (concept, forceRegenerate = false) => {
       if (!geminiReady) return;
       setSelectedConcept(concept);
+      setContentSaved(false);
+
+      const cacheKey = `dsa:${topic.id}:learn:${concept}`;
+
+      // Check cache first (unless regenerating)
+      if (!forceRegenerate) {
+        const cached = await storage.getCachedContent(cacheKey);
+        if (cached) {
+          setLearnContent(cached.content);
+          return;
+        }
+      }
+
       setLearnLoading(true);
       setLearnContent("");
       try {
@@ -96,6 +91,9 @@ export default function DSATopicView({ topic, onBack }) {
          Include Python code examples and time/space complexity analysis.`,
         );
         setLearnContent(response);
+
+        // Cache the content
+        await storage.setCachedContent(cacheKey, response, "dsa", concept);
 
         // Mark concept as learned
         updateDSAProgress((prev) => ({
@@ -329,10 +327,12 @@ export default function DSATopicView({ topic, onBack }) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
-                    saveContent(
-                      topic.id,
-                      `learn_${selectedConcept}`,
+                    const cacheKey = `dsa:${topic.id}:learn:${selectedConcept}`;
+                    storage.setCachedContent(
+                      cacheKey,
                       learnContent,
+                      "dsa",
+                      selectedConcept,
                     );
                     setContentSaved(true);
                     setTimeout(() => setContentSaved(false), 2000);
@@ -347,7 +347,7 @@ export default function DSATopicView({ topic, onBack }) {
                   {contentSaved ? "Saved!" : "Save"}
                 </button>
                 <button
-                  onClick={() => handleLearn(selectedConcept)}
+                  onClick={() => handleLearn(selectedConcept, true)}
                   className="btn-ghost text-xs flex items-center gap-1.5"
                   disabled={learnLoading}
                 >

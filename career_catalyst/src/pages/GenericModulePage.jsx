@@ -1,19 +1,19 @@
-import React, { useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useCallback, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import {
   BookOpen,
   HelpCircle,
   MessageSquare,
-  ArrowLeft,
   Send,
   RefreshCw,
   ChevronDown,
   ChevronRight,
   CheckCircle2,
   Save,
+  ArrowLeft,
+  Edit3,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
-import { ML_ROADMAP } from "../data/roadmaps";
 import {
   sendPrompt,
   sendPromptJSON,
@@ -26,11 +26,52 @@ import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
 import GenerationConfigBar from "../components/shared/GenerationConfigBar";
 
-export default function MLPage() {
-  const { mlProgress, updateMLProgress, geminiReady } = useApp();
+function makeTeachPrompt(moduleTitle) {
+  return `${PROMPTS._USER_CONTEXT || ""}
+You are a world-class instructor teaching "${moduleTitle}".
+Teach the given concept with DEEP understanding.
+
+Rules:
+- Start with intuition and motivation (WHY does this exist?)
+- Mathematical formulation where relevant (use LaTeX with $ for inline, $$ for blocks)
+- Visual explanations (ASCII diagrams, tables)
+- MANDATORY: Include REAL, RUNNABLE code examples where applicable
+- Common interview questions about this topic
+- Real-world applications and when to use/not use
+- Common pitfalls and misconceptions
+- Use simple English but don't dumb down the content
+- Be thorough — this builds deep knowledge for any interview`;
+}
+
+function makeQuizPrompt(moduleTitle) {
+  return `You are a quiz question generator for "${moduleTitle}".
+Generate a quiz question for the given topic.
+
+Return JSON:
+{
+  "question": "The question text",
+  "type": "mcq|short_answer",
+  "options": ["A", "B", "C", "D"],
+  "correctAnswer": "The correct answer",
+  "explanation": "Detailed explanation",
+  "difficulty": "easy|medium|hard",
+  "followUp": "A follow-up question"
+}
+
+Questions should test UNDERSTANDING, not memorization.`;
+}
+
+export default function GenericModulePage() {
+  const { slug } = useParams();
+  const navigate = useNavigate();
+  const { allModules, geminiReady } = useApp();
+
+  const moduleData = allModules.find((m) => m.slug === slug);
+
+  const [activeMode, setActiveMode] = useState("learn");
   const [selectedSection, setSelectedSection] = useState(null);
   const [selectedTopic, setSelectedTopic] = useState(null);
-  const [activeMode, setActiveMode] = useState("learn"); // learn, quiz, discuss
+  const [lastSubtopic, setLastSubtopic] = useState(null);
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [quizData, setQuizData] = useState(null);
@@ -41,17 +82,42 @@ export default function MLPage() {
   const [chatLoading, setChatLoading] = useState(false);
   const [expandedSections, setExpandedSections] = useState({});
   const [contentSaved, setContentSaved] = useState(false);
-  const [lastSubtopic, setLastSubtopic] = useState(null);
+  const [progress, setProgress] = useState({ topics: {}, stats: {} });
 
-  const toggleSection = (sectionId) => {
-    setExpandedSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
+  // Load progress
+  useEffect(() => {
+    if (slug) {
+      setProgress(storage.getModuleProgress(slug));
+    }
+  }, [slug]);
+
+  // Save progress helper
+  const updateProgress = useCallback(
+    (update) => {
+      setProgress((prev) => {
+        const next =
+          typeof update === "function" ? update(prev) : { ...prev, ...update };
+        storage.saveModuleProgress(slug, next);
+        storage.recordActivity();
+        return next;
+      });
+    },
+    [slug],
+  );
+
+  const toggleSection = (id) => {
+    setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const isTopicLearned = (sectionId, topicId) => {
-    return mlProgress.topics[`${sectionId}/${topicId}`]?.learned;
+    return progress.topics[`${sectionId}/${topicId}`]?.learned;
   };
 
-  // Learn a subtopic
+  // ─── Content cache key ───
+  const cacheKey = (sub) =>
+    `${slug}:${selectedSection?.id}:${selectedTopic?.id}:${sub}`;
+
+  // ─── Learn ───
   const handleLearn = useCallback(
     async (section, topic, subtopic, forceRegenerate = false) => {
       if (!geminiReady) return;
@@ -61,11 +127,11 @@ export default function MLPage() {
       setActiveMode("learn");
       setContentSaved(false);
 
-      const cacheKey = `ml:${section.id}:${topic.id}:${subtopic}`;
+      const key = `${slug}:${section.id}:${topic.id}:${subtopic}`;
 
       // Check cache first (unless regenerating)
       if (!forceRegenerate) {
-        const cached = await storage.getCachedContent(cacheKey);
+        const cached = await storage.getCachedContent(key);
         if (cached) {
           setContent(cached.content);
           return;
@@ -76,20 +142,18 @@ export default function MLPage() {
       setLoading(true);
       try {
         const response = await sendPrompt(
-          PROMPTS.ML_TEACH,
+          makeTeachPrompt(moduleData?.title || slug),
           `Teach me about "${subtopic}" under the topic "${topic.title}" (section: ${section.title}).
-         I work with LLMs, RAG pipelines, and multi-agent systems at a startup.
-         Go deep — mathematical formulation, intuition, code examples (PyTorch/Python), interview angles.
-         Don't hold back on the math but explain each step.`,
+Go deep — include code examples, intuition, interview angles. Don't hold back.`,
         );
         setContent(response);
 
         // Cache the content
-        await storage.setCachedContent(cacheKey, response, "ml", subtopic);
+        await storage.setCachedContent(key, response, slug, subtopic);
 
-        updateMLProgress((prev) => ({
+        // Mark as learned
+        updateProgress((prev) => ({
           ...prev,
-          conceptsLearned: prev.conceptsLearned + 1,
           topics: {
             ...prev.topics,
             [`${section.id}/${topic.id}`]: {
@@ -104,10 +168,10 @@ export default function MLPage() {
       }
       setLoading(false);
     },
-    [geminiReady, updateMLProgress],
+    [geminiReady, slug, moduleData, updateProgress],
   );
 
-  // Quiz on a topic
+  // ─── Quiz ───
   const handleQuiz = useCallback(
     async (section, topic) => {
       if (!geminiReady) return;
@@ -120,10 +184,10 @@ export default function MLPage() {
       setLoading(true);
       try {
         const quiz = await sendPromptJSON(
-          PROMPTS.ML_QUIZ,
-          `Generate a quiz question for topic: "${topic.title}" (${section.title}).
-         Subtopics: ${topic.subtopics.join(", ")}.
-         Make it test UNDERSTANDING, not memorization. Include "why" questions.`,
+          makeQuizPrompt(moduleData?.title || slug),
+          `Generate a quiz for topic: "${topic.title}" (${section.title}).
+Subtopics: ${topic.subtopics?.join(", ") || "general"}.
+Test UNDERSTANDING, not memorization.`,
         );
         setQuizData(quiz);
       } catch (err) {
@@ -131,7 +195,7 @@ export default function MLPage() {
       }
       setLoading(false);
     },
-    [geminiReady],
+    [geminiReady, slug, moduleData],
   );
 
   const submitQuizAnswer = useCallback(async () => {
@@ -139,21 +203,17 @@ export default function MLPage() {
     setLoading(true);
     try {
       const evaluation = await sendPrompt(
-        `You are an ML quiz evaluator. Be thorough but encouraging.`,
-        `Question: ${quizData.question}\nCorrect Answer: ${quizData.correctAnswer}\nUser's Answer: ${quizAnswer}\n\nEvaluate the user's answer. Is it correct? What's missing? Give detailed explanation.`,
+        "You are a quiz evaluator. Be thorough but encouraging.",
+        `Question: ${quizData.question}\nCorrect Answer: ${quizData.correctAnswer}\nUser's Answer: ${quizAnswer}\n\nEvaluate the answer.`,
       );
       setQuizResult(evaluation);
-      updateMLProgress((prev) => ({
-        ...prev,
-        quizzesTaken: prev.quizzesTaken + 1,
-      }));
     } catch (err) {
       setQuizResult(`⚠️ ${err.message}`);
     }
     setLoading(false);
-  }, [quizData, quizAnswer, updateMLProgress]);
+  }, [quizData, quizAnswer]);
 
-  // Discussion about a topic
+  // ─── Discuss ───
   const handleChat = useCallback(async () => {
     if (!geminiReady || !chatInput.trim() || chatLoading) return;
     const msg = chatInput.trim();
@@ -161,15 +221,11 @@ export default function MLPage() {
     setChatMessages((prev) => [...prev, { role: "user", content: msg }]);
     setChatLoading(true);
     try {
-      const sessionId = selectedTopic
-        ? `ml-${selectedSection.id}-${selectedTopic.id}`
-        : "ml-general";
-      const context = selectedTopic
-        ? `Topic: ${selectedTopic.title} under ${selectedSection.title}. Subtopics: ${selectedTopic.subtopics.join(", ")}.`
-        : "General ML/AI discussion.";
+      const sessionId = `${slug}-${selectedSection?.id}-${selectedTopic?.id}`;
+      const context = `Module: ${moduleData?.title}. Topic: ${selectedTopic?.title || "General"}.`;
       const response = await sendChatMessage(
         sessionId,
-        `${PROMPTS.ML_TEACH}\n\n${context}`,
+        `${makeTeachPrompt(moduleData?.title || slug)}\n\n${context}`,
         msg,
       );
       setChatMessages((prev) => [...prev, { role: "ai", content: response }]);
@@ -180,7 +236,31 @@ export default function MLPage() {
       ]);
     }
     setChatLoading(false);
-  }, [geminiReady, chatInput, chatLoading, selectedSection, selectedTopic]);
+  }, [
+    geminiReady,
+    chatInput,
+    chatLoading,
+    slug,
+    moduleData,
+    selectedSection,
+    selectedTopic,
+  ]);
+
+  if (!moduleData) {
+    return (
+      <div className="page-container text-center py-20">
+        <p className="text-dark-200">Module not found.</p>
+        <button
+          onClick={() => navigate("/modules")}
+          className="btn-primary mt-4"
+        >
+          Back to Modules
+        </button>
+      </div>
+    );
+  }
+
+  const roadmap = moduleData.roadmap || [];
 
   return (
     <div className="page-container">
@@ -188,13 +268,22 @@ export default function MLPage() {
         {/* Left: Topic Tree */}
         <div className="w-80 flex-shrink-0">
           <div className="sticky top-6">
-            <h1 className="text-2xl font-bold text-white mb-2">ML & AI</h1>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl">{moduleData.icon}</span>
+              <h1 className="text-2xl font-bold text-white">
+                {moduleData.title}
+              </h1>
+            </div>
             <p className="text-sm text-dark-200 mb-4">
-              Deep knowledge that builds your foundation for any interview.
+              {moduleData.description}
             </p>
 
-            <div className="space-y-2">
-              {ML_ROADMAP.map((section) => (
+            <div className="mb-3">
+              <GenerationConfigBar compact />
+            </div>
+
+            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+              {roadmap.map((section) => (
                 <div key={section.id} className="glass-card overflow-hidden">
                   <button
                     onClick={() => toggleSection(section.id)}
@@ -213,7 +302,7 @@ export default function MLPage() {
 
                   {expandedSections[section.id] && (
                     <div className="px-3 pb-3 space-y-1 animate-fade-in">
-                      {section.topics.map((topic) => (
+                      {section.topics?.map((topic) => (
                         <div key={topic.id}>
                           <div className="flex items-center gap-2 px-3 py-2">
                             {isTopicLearned(section.id, topic.id) ? (
@@ -226,7 +315,7 @@ export default function MLPage() {
                             </span>
                           </div>
                           <div className="ml-8 space-y-0.5">
-                            {topic.subtopics.map((sub) => (
+                            {topic.subtopics?.map((sub) => (
                               <button
                                 key={sub}
                                 onClick={() => handleLearn(section, topic, sub)}
@@ -249,7 +338,7 @@ export default function MLPage() {
                                   setActiveMode("discuss");
                                   setChatMessages([]);
                                   resetChatSession(
-                                    `ml-${section.id}-${topic.id}`,
+                                    `${slug}-${section.id}-${topic.id}`,
                                   );
                                 }}
                                 className="text-[10px] px-2 py-0.5 rounded bg-brand-indigo/10 text-brand-indigo-light hover:bg-brand-indigo/20 transition-all"
@@ -266,18 +355,15 @@ export default function MLPage() {
               ))}
             </div>
 
-            {/* Stats */}
+            {/* Progress stats */}
             <div className="glass-card p-4 mt-4">
               <div className="flex justify-between text-sm">
-                <span className="text-dark-200">Concepts learned</span>
+                <span className="text-dark-200">Topics learned</span>
                 <span className="text-white font-semibold">
-                  {mlProgress.conceptsLearned}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm mt-1">
-                <span className="text-dark-200">Quizzes taken</span>
-                <span className="text-white font-semibold">
-                  {mlProgress.quizzesTaken}
+                  {
+                    Object.values(progress.topics).filter((t) => t.learned)
+                      .length
+                  }
                 </span>
               </div>
             </div>
@@ -286,16 +372,11 @@ export default function MLPage() {
 
         {/* Right: Content Area */}
         <div className="flex-1 min-w-0">
-          {/* AI Config */}
-          <div className="mb-4">
-            <GenerationConfigBar compact />
-          </div>
-
           {/* Learn Mode */}
           {activeMode === "learn" && (
             <>
               {loading && <LoadingDots text="Generating deep explanation" />}
-              {content && (
+              {content && !loading && (
                 <div className="animate-fade-in space-y-3">
                   <div className="glass-card p-6">
                     <MarkdownRenderer content={content} />
@@ -303,11 +384,11 @@ export default function MLPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
-                        const cacheKey = `ml:${selectedSection?.id}:${selectedTopic?.id}:${lastSubtopic}`;
+                        const key = cacheKey(lastSubtopic);
                         storage.setCachedContent(
-                          cacheKey,
+                          key,
                           content,
-                          "ml",
+                          slug,
                           lastSubtopic,
                         );
                         setContentSaved(true);
@@ -347,8 +428,8 @@ export default function MLPage() {
                     Select a topic from the left
                   </h3>
                   <p className="text-sm text-dark-200">
-                    Click any subtopic to get an in-depth AI explanation with
-                    math, code, and interview angles.
+                    Click any subtopic to get an in-depth AI explanation.
+                    Previously generated content loads instantly from cache.
                   </p>
                 </div>
               )}
@@ -366,13 +447,7 @@ export default function MLPage() {
                     <h3 className="text-lg font-bold text-white">
                       Quiz: {selectedTopic?.title}
                     </h3>
-                    <span
-                      className={`badge ${quizData.difficulty === "easy" ? "badge-easy" : quizData.difficulty === "medium" ? "badge-medium" : "badge-hard"}`}
-                    >
-                      {quizData.difficulty}
-                    </span>
                   </div>
-
                   <MarkdownRenderer content={quizData.question} />
 
                   {quizData.type === "mcq" && quizData.options ? (
@@ -396,7 +471,7 @@ export default function MLPage() {
                     <textarea
                       value={quizAnswer}
                       onChange={(e) => setQuizAnswer(e.target.value)}
-                      placeholder="Type your answer here..."
+                      placeholder="Type your answer..."
                       className="textarea-field mt-4 min-h-[120px]"
                     />
                   )}
@@ -407,12 +482,7 @@ export default function MLPage() {
                       disabled={loading || !quizAnswer.trim()}
                       className="btn-primary flex items-center gap-2"
                     >
-                      {loading ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4" />
-                      )}
-                      Submit Answer
+                      <CheckCircle2 className="w-4 h-4" /> Submit
                     </button>
                     <button
                       onClick={() => handleQuiz(selectedSection, selectedTopic)}
@@ -425,16 +495,6 @@ export default function MLPage() {
                   {quizResult && (
                     <div className="mt-4 p-4 rounded-xl bg-dark-800 border border-dark-500/30 animate-fade-in">
                       <MarkdownRenderer content={quizResult} />
-                      {quizData.followUp && (
-                        <div className="mt-3 p-3 rounded-lg bg-brand-indigo/10 border border-brand-indigo/20">
-                          <p className="text-xs text-brand-indigo-light font-semibold mb-1">
-                            Follow-up to think about:
-                          </p>
-                          <p className="text-sm text-dark-200">
-                            {quizData.followUp}
-                          </p>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -447,7 +507,7 @@ export default function MLPage() {
             <div className="glass-card flex flex-col h-[calc(100vh-200px)] overflow-hidden">
               <div className="px-4 py-3 border-b border-dark-600/50">
                 <h3 className="text-sm font-bold text-white">
-                  Discussing: {selectedTopic?.title || "General ML/AI"}
+                  Discussing: {selectedTopic?.title || moduleData.title}
                 </h3>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -455,10 +515,7 @@ export default function MLPage() {
                   <div className="text-center py-16">
                     <MessageSquare className="w-10 h-10 text-dark-400 mx-auto mb-3" />
                     <p className="text-dark-200">
-                      Ask any doubt about {selectedTopic?.title}.
-                    </p>
-                    <p className="text-xs text-dark-300 mt-1">
-                      Get in-depth explanations with math and code.
+                      Ask any doubt. Get in-depth explanations.
                     </p>
                   </div>
                 )}

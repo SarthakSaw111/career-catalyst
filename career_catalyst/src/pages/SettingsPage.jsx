@@ -11,6 +11,7 @@ import {
   Trash2,
   Cpu,
   Brain,
+  Database,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import {
@@ -36,9 +37,11 @@ export default function SettingsPage() {
   const [thinkingBudgetVal, setThinkingBudgetVal] = useState(
     getThinkingConfig().budget,
   );
+  const [supabaseUrl, setSupabaseUrl] = useState(profile?.supabaseUrl || "");
+  const [supabaseKey, setSupabaseKey] = useState(profile?.supabaseKey || "");
 
   const handleSave = () => {
-    updateProfile({ name, apiKey });
+    updateProfile({ name, apiKey, supabaseUrl, supabaseKey });
     updateSettings({
       ...settings,
       dailyGoalMinutes: dailyGoal,
@@ -274,6 +277,72 @@ export default function SettingsPage() {
               />
             </div>
           </div>
+        </motion.div>
+
+        {/* Supabase (Cloud Sync) */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="glass-card p-6"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Database className="w-5 h-5 text-brand-emerald" />
+            <h2 className="text-base font-bold text-white">
+              Cloud Sync (Supabase)
+            </h2>
+            {supabaseUrl && supabaseKey ? (
+              <span className="badge badge-easy ml-2">Configured</span>
+            ) : (
+              <span className="badge bg-dark-600 text-dark-300 ml-2">
+                Optional
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-dark-200 mb-3">
+            Connect to Supabase to sync your data across devices. Create a free
+            project at{" "}
+            <a
+              href="https://supabase.com"
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand-indigo-light hover:underline"
+            >
+              supabase.com
+            </a>
+            , then paste your project URL and anon key below. Without this, data
+            is stored locally only.
+          </p>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs text-dark-200 mb-1">
+                Project URL
+              </label>
+              <input
+                type="text"
+                value={supabaseUrl}
+                onChange={(e) => setSupabaseUrl(e.target.value)}
+                placeholder="https://your-project.supabase.co"
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-dark-200 mb-1">
+                Anon Key
+              </label>
+              <input
+                type="password"
+                value={supabaseKey}
+                onChange={(e) => setSupabaseKey(e.target.value)}
+                placeholder="Enter your Supabase anon key..."
+                className="input-field"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-dark-300 mt-2">
+            Run the SQL schema (supabase_schema.sql) in your Supabase dashboard
+            first.
+          </p>
         </motion.div>
 
         {/* Save */}

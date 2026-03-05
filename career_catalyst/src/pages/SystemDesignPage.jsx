@@ -7,6 +7,8 @@ import {
   Send,
   RefreshCw,
   MessageSquare,
+  Save,
+  CheckCircle2,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { SD_ROADMAP } from "../data/roadmaps";
@@ -16,6 +18,7 @@ import {
   resetChatSession,
 } from "../services/gemini";
 import { PROMPTS } from "../services/prompts";
+import * as storage from "../store/storage";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
 import GenerationConfigBar from "../components/shared/GenerationConfigBar";
@@ -31,14 +34,27 @@ export default function SystemDesignPage() {
   const [sessionInput, setSessionInput] = useState("");
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionActive, setSessionActive] = useState(false);
+  const [contentSaved, setContentSaved] = useState(false);
 
   // Learn a topic
   const handleLearn = useCallback(
-    async (section, topic) => {
+    async (section, topic, forceRegenerate = false) => {
       if (!geminiReady) return;
       setSelectedSection(section);
       setSelectedTopic(topic);
       setActiveMode("learn");
+      setContentSaved(false);
+
+      const cacheKey = `sd:${section.id}:${topic}`;
+
+      if (!forceRegenerate) {
+        const cached = await storage.getCachedContent(cacheKey);
+        if (cached) {
+          setContent(cached.content);
+          return;
+        }
+      }
+
       setContent("");
       setLoading(true);
       try {
@@ -50,6 +66,15 @@ export default function SystemDesignPage() {
          If this is a design problem, walk me through the full design process.`,
         );
         setContent(response);
+
+        // Cache the content
+        await storage.setCachedContent(
+          cacheKey,
+          response,
+          "system-design",
+          topic,
+        );
+
         updateSDProgress((prev) => ({
           ...prev,
           topics: {
@@ -189,8 +214,43 @@ export default function SystemDesignPage() {
             <>
               {loading && <LoadingDots text="Generating design explanation" />}
               {content && (
-                <div className="glass-card p-6 animate-fade-in">
-                  <MarkdownRenderer content={content} />
+                <div className="animate-fade-in space-y-3">
+                  <div className="glass-card p-6">
+                    <MarkdownRenderer content={content} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const cacheKey = `sd:${selectedSection?.id}:${selectedTopic}`;
+                        storage.setCachedContent(
+                          cacheKey,
+                          content,
+                          "system-design",
+                          selectedTopic,
+                        );
+                        setContentSaved(true);
+                        setTimeout(() => setContentSaved(false), 2000);
+                      }}
+                      className="btn-ghost text-xs flex items-center gap-1.5"
+                    >
+                      {contentSaved ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-emerald" />
+                      ) : (
+                        <Save className="w-3.5 h-3.5" />
+                      )}
+                      {contentSaved ? "Saved!" : "Save"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        selectedTopic &&
+                        handleLearn(selectedSection, selectedTopic, true)
+                      }
+                      className="btn-ghost text-xs flex items-center gap-1.5"
+                      disabled={loading}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+                    </button>
+                  </div>
                 </div>
               )}
               {!content && !loading && (

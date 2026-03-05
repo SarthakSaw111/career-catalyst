@@ -15,6 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  PlusCircle,
+  BookOpen,
 } from "lucide-react";
 
 const iconMap = {
@@ -26,21 +28,59 @@ const iconMap = {
   Languages,
   TrendingUp,
   Settings,
+  BookOpen,
 };
 
-const navItems = [
+// Static nav items for top and bottom of nav
+const topNavItems = [
   { path: "/", icon: "LayoutDashboard", label: "Dashboard" },
-  { path: "/dsa", icon: "Code2", label: "DSA & Coding" },
-  { path: "/ml", icon: "Brain", label: "ML & AI" },
-  { path: "/system-design", icon: "Network", label: "System Design" },
-  { path: "/interview", icon: "Mic", label: "Mock Interview" },
-  { path: "/english", icon: "Languages", label: "English Lab" },
+];
+
+// Built-in module slug → route mapping (these use dedicated pages)
+const builtinRoutes = {
+  dsa: "/dsa",
+  ml: "/ml",
+  "system-design": "/system-design",
+  interview: "/interview",
+  english: "/english",
+};
+
+const builtinIcons = {
+  dsa: "Code2",
+  ml: "Brain",
+  "system-design": "Network",
+  interview: "Mic",
+  english: "Languages",
+};
+
+const bottomNavItems = [
   { path: "/progress", icon: "TrendingUp", label: "Progress" },
   { path: "/settings", icon: "Settings", label: "Settings" },
 ];
 
 export default function Sidebar({ collapsed, setCollapsed }) {
-  const { streak, setChatOpen } = useApp();
+  const { streak, setChatOpen, allModules, customModules } = useApp();
+
+  // Build nav items dynamically:
+  // 1. Dashboard
+  // 2. Built-in modules from allModules (use dedicated routes)
+  // 3. Custom modules (use /module/:slug)
+  // 4. Create Module button
+  // 5. Progress, Settings
+  const builtinModuleNav = allModules
+    .filter((m) => m.is_builtin && builtinRoutes[m.slug])
+    .map((m) => ({
+      path: builtinRoutes[m.slug],
+      icon: builtinIcons[m.slug] || "BookOpen",
+      label: m.title,
+    }));
+
+  const customModuleNav = (customModules || []).map((m) => ({
+    path: `/module/${m.slug}`,
+    icon: "BookOpen",
+    label: m.title,
+    emoji: m.icon,
+  }));
 
   return (
     <aside
@@ -88,20 +128,116 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
       {/* Navigation */}
       <nav className="flex-1 mt-4 px-3 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {/* Dashboard */}
+        {topNavItems.map((item) => {
           const Icon = iconMap[item.icon];
           return (
             <NavLink
               key={item.path}
               to={item.path}
-              end={item.path === "/"}
+              end
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200
-                ${
-                  isActive
-                    ? "bg-brand-indigo/15 text-brand-indigo-light font-medium"
-                    : "text-dark-200 hover:bg-dark-700 hover:text-white"
-                }
+                ${isActive ? "bg-brand-indigo/15 text-brand-indigo-light font-medium" : "text-dark-200 hover:bg-dark-700 hover:text-white"}
+                ${collapsed ? "justify-center" : ""}`
+              }
+              title={collapsed ? item.label : ""}
+            >
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              {!collapsed && (
+                <span className="text-sm animate-fade-in">{item.label}</span>
+              )}
+            </NavLink>
+          );
+        })}
+
+        {/* Divider: Learning Modules */}
+        {!collapsed && (
+          <div className="pt-3 pb-1 px-3">
+            <span className="text-[10px] uppercase tracking-wider text-dark-400 font-semibold">
+              Modules
+            </span>
+          </div>
+        )}
+        {collapsed && <div className="my-2 mx-2 border-t border-dark-600/30" />}
+
+        {/* Built-in modules */}
+        {builtinModuleNav.map((item) => {
+          const Icon = iconMap[item.icon];
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200
+                ${isActive ? "bg-brand-indigo/15 text-brand-indigo-light font-medium" : "text-dark-200 hover:bg-dark-700 hover:text-white"}
+                ${collapsed ? "justify-center" : ""}`
+              }
+              title={collapsed ? item.label : ""}
+            >
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              {!collapsed && (
+                <span className="text-sm animate-fade-in">{item.label}</span>
+              )}
+            </NavLink>
+          );
+        })}
+
+        {/* Custom modules */}
+        {customModuleNav.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200
+              ${isActive ? "bg-brand-indigo/15 text-brand-indigo-light font-medium" : "text-dark-200 hover:bg-dark-700 hover:text-white"}
+              ${collapsed ? "justify-center" : ""}`
+            }
+            title={collapsed ? item.label : ""}
+          >
+            {item.emoji ? (
+              <span className="text-lg flex-shrink-0 w-5 text-center">
+                {item.emoji}
+              </span>
+            ) : (
+              <BookOpen className="w-5 h-5 flex-shrink-0" />
+            )}
+            {!collapsed && (
+              <span className="text-sm animate-fade-in">{item.label}</span>
+            )}
+          </NavLink>
+        ))}
+
+        {/* Create Module button */}
+        <NavLink
+          to="/modules"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 mt-1
+            ${isActive ? "bg-brand-emerald/15 text-brand-emerald font-medium" : "text-dark-300 hover:bg-dark-700 hover:text-brand-emerald"}
+            ${collapsed ? "justify-center" : ""}`
+          }
+          title={collapsed ? "Create Module" : ""}
+        >
+          <PlusCircle className="w-5 h-5 flex-shrink-0" />
+          {!collapsed && (
+            <span className="text-sm animate-fade-in">Create Module</span>
+          )}
+        </NavLink>
+
+        {/* Divider */}
+        {!collapsed && <div className="my-1" />}
+        {collapsed && <div className="my-2 mx-2 border-t border-dark-600/30" />}
+
+        {/* Bottom static items */}
+        {bottomNavItems.map((item) => {
+          const Icon = iconMap[item.icon];
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200
+                ${isActive ? "bg-brand-indigo/15 text-brand-indigo-light font-medium" : "text-dark-200 hover:bg-dark-700 hover:text-white"}
                 ${collapsed ? "justify-center" : ""}`
               }
               title={collapsed ? item.label : ""}
