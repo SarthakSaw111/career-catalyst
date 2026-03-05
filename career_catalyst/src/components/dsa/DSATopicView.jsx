@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   ArrowLeft,
   BookOpen,
@@ -8,6 +8,8 @@ import {
   Send,
   RefreshCw,
   CheckCircle2,
+  Save,
+  Download,
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import {
@@ -19,6 +21,28 @@ import {
 import { PROMPTS } from "../../services/prompts";
 import MarkdownRenderer from "../shared/MarkdownRenderer";
 import LoadingDots from "../shared/LoadingDots";
+import GenerationConfigBar from "../shared/GenerationConfigBar";
+
+const SAVED_CONTENT_KEY = "cc_saved_content";
+
+function getSavedContent(topicId, type) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SAVED_CONTENT_KEY) || "{}");
+    return all[`${topicId}_${type}`] || null;
+  } catch {
+    return null;
+  }
+}
+
+function saveContent(topicId, type, content) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SAVED_CONTENT_KEY) || "{}");
+    all[`${topicId}_${type}`] = { content, savedAt: new Date().toISOString() };
+    localStorage.setItem(SAVED_CONTENT_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.error("Save error:", e);
+  }
+}
 
 export default function DSATopicView({ topic, onBack }) {
   const { dsaProgress, updateDSAProgress, geminiReady } = useApp();
@@ -39,6 +63,17 @@ export default function DSATopicView({ topic, onBack }) {
   const [chatLoading, setChatLoading] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState(null);
   const [difficulty, setDifficulty] = useState("medium");
+  const [contentSaved, setContentSaved] = useState(false);
+
+  // Load previously saved content when concept changes
+  useEffect(() => {
+    if (selectedConcept) {
+      const saved = getSavedContent(topic.id, `learn_${selectedConcept}`);
+      if (saved && !learnContent) {
+        setLearnContent(saved.content);
+      }
+    }
+  }, [selectedConcept]);
 
   const topicProgress = dsaProgress.topics[topic.id] || {
     conceptLearned: false,
@@ -236,7 +271,7 @@ export default function DSATopicView({ topic, onBack }) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 border-b border-dark-600/50 pb-3">
+      <div className="flex gap-2 mb-4 border-b border-dark-600/50 pb-3">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -255,6 +290,11 @@ export default function DSATopicView({ topic, onBack }) {
             </button>
           );
         })}
+      </div>
+
+      {/* AI Model Config */}
+      <div className="mb-4">
+        <GenerationConfigBar compact />
       </div>
 
       {/* Learn Tab */}
@@ -282,8 +322,38 @@ export default function DSATopicView({ topic, onBack }) {
 
           {learnLoading && <LoadingDots text="Learning" />}
           {learnContent && (
-            <div className="glass-card p-6 animate-fade-in">
-              <MarkdownRenderer content={learnContent} />
+            <div className="animate-fade-in space-y-3">
+              <div className="glass-card p-6">
+                <MarkdownRenderer content={learnContent} />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    saveContent(
+                      topic.id,
+                      `learn_${selectedConcept}`,
+                      learnContent,
+                    );
+                    setContentSaved(true);
+                    setTimeout(() => setContentSaved(false), 2000);
+                  }}
+                  className="btn-ghost text-xs flex items-center gap-1.5"
+                >
+                  {contentSaved ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-brand-emerald" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  {contentSaved ? "Saved!" : "Save"}
+                </button>
+                <button
+                  onClick={() => handleLearn(selectedConcept)}
+                  className="btn-ghost text-xs flex items-center gap-1.5"
+                  disabled={learnLoading}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+                </button>
+              </div>
             </div>
           )}
         </div>

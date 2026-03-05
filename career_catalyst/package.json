@@ -12,13 +12,16 @@
     "@google/generative-ai": "^0.24.1",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.34.3",
+    "katex": "^0.16.33",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^9.0.1",
     "react-router-dom": "^7.13.1",
     "react-syntax-highlighter": "^15.6.1",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.1.1",

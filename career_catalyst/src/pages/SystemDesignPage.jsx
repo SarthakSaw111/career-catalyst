@@ -18,6 +18,7 @@ import {
 import { PROMPTS } from "../services/prompts";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
+import GenerationConfigBar from "../components/shared/GenerationConfigBar";
 
 export default function SystemDesignPage() {
   const { sdProgress, updateSDProgress, geminiReady } = useApp();
@@ -127,6 +128,9 @@ export default function SystemDesignPage() {
           Master distributed systems, ML system design, and LLM architecture
           design.
         </p>
+        <div className="mt-3">
+          <GenerationConfigBar compact />
+        </div>
         <div className="flex gap-4 mt-4">
           <div className="glass-card px-4 py-2 text-sm">
             <span className="text-dark-200">Topics covered: </span>

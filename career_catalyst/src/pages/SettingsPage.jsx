@@ -9,9 +9,18 @@ import {
   CheckCircle2,
   AlertCircle,
   Trash2,
+  Cpu,
+  Brain,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
-import { isGeminiReady } from "../services/gemini";
+import {
+  isGeminiReady,
+  AVAILABLE_MODELS,
+  getModelId,
+  setModel,
+  getThinkingConfig,
+  setThinking,
+} from "../services/gemini";
 
 export default function SettingsPage() {
   const { profile, updateProfile, settings, updateSettings, geminiReady } =
@@ -22,6 +31,11 @@ export default function SettingsPage() {
   const [dailyProblems, setDailyProblems] = useState(settings.dailyProblems);
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [selectedModel, setSelectedModel] = useState(getModelId());
+  const [thinkingOn, setThinkingOn] = useState(getThinkingConfig().enabled);
+  const [thinkingBudgetVal, setThinkingBudgetVal] = useState(
+    getThinkingConfig().budget,
+  );
 
   const handleSave = () => {
     updateProfile({ name, apiKey });
@@ -30,6 +44,13 @@ export default function SettingsPage() {
       dailyGoalMinutes: dailyGoal,
       dailyProblems: dailyProblems,
     });
+    // Apply model + thinking settings
+    setModel(selectedModel);
+    const modelInfo = AVAILABLE_MODELS.find((m) => m.id === selectedModel);
+    setThinking(
+      modelInfo?.supportsThinking ? thinkingOn : false,
+      thinkingBudgetVal,
+    );
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
@@ -95,6 +116,101 @@ export default function SettingsPage() {
             <p className="text-xs text-brand-amber flex items-center gap-1 mt-1">
               <AlertCircle className="w-3 h-3" /> Click Save to connect
             </p>
+          )}
+        </motion.div>
+
+        {/* Model Selection */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="glass-card p-6"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Cpu className="w-5 h-5 text-brand-indigo-light" />
+            <h2 className="text-base font-bold text-white">AI Model</h2>
+          </div>
+          <p className="text-xs text-dark-200 mb-3">
+            Select which Gemini model to use. You can also change this
+            per-generation from the config bar on each page.
+          </p>
+          <div className="space-y-2">
+            {AVAILABLE_MODELS.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setSelectedModel(m.id)}
+                className={`w-full text-left px-4 py-3 rounded-xl border transition-all
+                  ${
+                    selectedModel === m.id
+                      ? "border-brand-indigo bg-brand-indigo/10"
+                      : "border-dark-500/30 bg-dark-700/30 hover:border-dark-400"
+                  }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`text-sm font-medium ${selectedModel === m.id ? "text-brand-indigo-light" : "text-white"}`}
+                  >
+                    {m.label}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {m.supportsThinking && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-amber/10 text-brand-amber">
+                        thinking
+                      </span>
+                    )}
+                    {selectedModel === m.id && (
+                      <CheckCircle2 className="w-4 h-4 text-brand-indigo" />
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-dark-300 mt-0.5">{m.description}</p>
+              </button>
+            ))}
+          </div>
+
+          {/* Thinking Config */}
+          {AVAILABLE_MODELS.find((m) => m.id === selectedModel)
+            ?.supportsThinking && (
+            <div className="mt-4 p-4 rounded-xl bg-dark-800/60 border border-dark-600/30">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-brand-amber" />
+                  <span className="text-sm font-medium text-white">
+                    Thinking Mode
+                  </span>
+                </div>
+                <button
+                  onClick={() => setThinkingOn(!thinkingOn)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all border
+                    ${
+                      thinkingOn
+                        ? "bg-brand-amber/15 border-brand-amber/30 text-brand-amber-light"
+                        : "bg-dark-700 border-dark-500/30 text-dark-300"
+                    }`}
+                >
+                  {thinkingOn ? "ON" : "OFF"}
+                </button>
+              </div>
+              {thinkingOn && (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-dark-300">Budget:</span>
+                  <input
+                    type="range"
+                    min={1024}
+                    max={24576}
+                    step={1024}
+                    value={thinkingBudgetVal}
+                    onChange={(e) =>
+                      setThinkingBudgetVal(Number(e.target.value))
+                    }
+                    className="flex-1 h-1.5 accent-brand-amber cursor-pointer"
+                  />
+                  <span className="text-xs text-dark-200 min-w-[50px] text-right">
+                    {Math.round(thinkingBudgetVal / 1024)}k tokens
+                  </span>
+                </div>
+              )}
+            </div>
           )}
         </motion.div>
 

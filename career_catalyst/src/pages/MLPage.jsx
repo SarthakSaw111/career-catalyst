@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle2,
+  Save,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { ML_ROADMAP } from "../data/roadmaps";
@@ -22,6 +23,28 @@ import {
 import { PROMPTS } from "../services/prompts";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
+import GenerationConfigBar from "../components/shared/GenerationConfigBar";
+
+const SAVED_ML_KEY = "cc_saved_ml_content";
+
+function getSavedML(key) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SAVED_ML_KEY) || "{}");
+    return all[key] || null;
+  } catch {
+    return null;
+  }
+}
+
+function saveMLContent(key, content) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SAVED_ML_KEY) || "{}");
+    all[key] = { content, savedAt: new Date().toISOString() };
+    localStorage.setItem(SAVED_ML_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.error("Save error:", e);
+  }
+}
 
 export default function MLPage() {
   const { mlProgress, updateMLProgress, geminiReady } = useApp();
@@ -37,6 +60,8 @@ export default function MLPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [expandedSections, setExpandedSections] = useState({});
+  const [contentSaved, setContentSaved] = useState(false);
+  const [lastSubtopic, setLastSubtopic] = useState(null);
 
   const toggleSection = (sectionId) => {
     setExpandedSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
@@ -52,9 +77,11 @@ export default function MLPage() {
       if (!geminiReady) return;
       setSelectedSection(section);
       setSelectedTopic(topic);
+      setLastSubtopic(subtopic);
       setActiveMode("learn");
       setContent("");
       setLoading(true);
+      setContentSaved(false);
       try {
         const response = await sendPrompt(
           PROMPTS.ML_TEACH,
@@ -264,13 +291,52 @@ export default function MLPage() {
 
         {/* Right: Content Area */}
         <div className="flex-1 min-w-0">
+          {/* AI Config */}
+          <div className="mb-4">
+            <GenerationConfigBar compact />
+          </div>
+
           {/* Learn Mode */}
           {activeMode === "learn" && (
             <>
               {loading && <LoadingDots text="Generating deep explanation" />}
               {content && (
-                <div className="glass-card p-6 animate-fade-in">
-                  <MarkdownRenderer content={content} />
+                <div className="animate-fade-in space-y-3">
+                  <div className="glass-card p-6">
+                    <MarkdownRenderer content={content} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const key = `${selectedSection?.id}_${selectedTopic?.id}_${lastSubtopic}`;
+                        saveMLContent(key, content);
+                        setContentSaved(true);
+                        setTimeout(() => setContentSaved(false), 2000);
+                      }}
+                      className="btn-ghost text-xs flex items-center gap-1.5"
+                    >
+                      {contentSaved ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-emerald" />
+                      ) : (
+                        <Save className="w-3.5 h-3.5" />
+                      )}
+                      {contentSaved ? "Saved!" : "Save"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        lastSubtopic &&
+                        handleLearn(
+                          selectedSection,
+                          selectedTopic,
+                          lastSubtopic,
+                        )
+                      }
+                      className="btn-ghost text-xs flex items-center gap-1.5"
+                      disabled={loading}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+                    </button>
+                  </div>
                 </div>
               )}
               {!content && !loading && (

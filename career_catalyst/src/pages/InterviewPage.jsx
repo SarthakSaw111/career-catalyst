@@ -16,6 +16,7 @@ import { sendChatMessage, resetChatSession } from "../services/gemini";
 import { PROMPTS } from "../services/prompts";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
+import GenerationConfigBar from "../components/shared/GenerationConfigBar";
 
 const INTERVIEW_TYPES = [
   {
@@ -159,6 +160,9 @@ export default function InterviewPage() {
             Realistic AI-powered interview simulations. Practice until you're
             confident.
           </p>
+          <div className="mt-3">
+            <GenerationConfigBar compact />
+          </div>
         </div>
 
         {/* Interview Type Cards */}

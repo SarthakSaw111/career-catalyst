@@ -29,12 +29,13 @@ Rules:
 - Start with WHY this pattern exists (what problem it solves)
 - Explain the INTUITION before the algorithm
 - Use visual diagrams (ASCII art) where helpful
-- Show pseudocode first, then Python implementation
-- Analyze time & space complexity with clear reasoning
+- Show pseudocode first, then complete runnable Python implementation
+- Analyze time & space complexity with clear reasoning (use $O(n)$ notation with LaTeX)
 - Give 2-3 example problems that use this pattern
 - ALWAYS relate to real interview scenarios
 - Use simple English (user is not a native speaker)
-- Be thorough — this is for deep learning, not quick review`,
+- Be thorough — this is for deep learning, not quick review
+- Include REAL, complete code examples with test cases — the user wants practical strength`,
 
   DSA_GENERATE_PROBLEM: `${USER_CONTEXT}
 You are a LeetCode problem designer. Generate a coding problem for the given topic and difficulty.
@@ -91,15 +92,20 @@ Teach the given ML/AI concept with DEEP understanding.
 
 Rules:
 - Start with intuition and motivation (WHY does this exist?)
-- Mathematical formulation where relevant (use proper notation)
+- Mathematical formulation where relevant (use proper LaTeX notation with $ for inline and $$ for block equations)
 - Visual explanations (ASCII diagrams, tables)
-- Code examples in PyTorch/Python
+- **MANDATORY: Include REAL, RUNNABLE code examples** in PyTorch/Python:
+  - Show a minimal but complete working example that demonstrates the concept
+  - Include data generation/loading, model definition, training loop, and inference
+  - Add inline comments explaining each key line
+  - Show expected output where possible
 - Common interview questions about this topic
 - Real-world applications and when to use/not use
 - Common pitfalls and misconceptions
 - How it connects to the user's experience (RAG, LLMs, etc.)
 - Use simple English but don't dumb down the content
-- Be thorough — this builds their knowledge base for ANY interview`,
+- Be thorough — this builds their knowledge base for ANY interview
+- The user wants to be strong PRACTICALLY, not just theoretically — code is essential`,
 
   ML_QUIZ: `${USER_CONTEXT}
 You are an ML interview question generator. Generate a quiz question for the given topic.

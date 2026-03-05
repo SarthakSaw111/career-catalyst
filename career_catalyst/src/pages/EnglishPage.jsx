@@ -18,6 +18,7 @@ import {
 import { PROMPTS } from "../services/prompts";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
+import GenerationConfigBar from "../components/shared/GenerationConfigBar";
 
 export default function EnglishPage() {
   const { englishProgress, updateEnglishProgress, geminiReady } = useApp();
@@ -166,6 +167,9 @@ export default function EnglishPage() {
             Build confidence in professional English. Every interaction here
             improves your communication.
           </p>
+          <div className="mt-3 mb-2">
+            <GenerationConfigBar compact />
+          </div>
           <div className="flex gap-4 mt-4">
             <div className="glass-card px-4 py-2 text-sm">
               <span className="text-dark-200">Lessons: </span>

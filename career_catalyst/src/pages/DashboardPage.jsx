@@ -22,6 +22,7 @@ import { sendPrompt } from "../services/gemini";
 import { PROMPTS } from "../services/prompts";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
+import GenerationConfigBar from "../components/shared/GenerationConfigBar";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -225,7 +226,7 @@ Streak: ${streak.currentStreak} days current, ${streak.longestStreak} best`;
         transition={{ delay: 0.3 }}
         className="glass-card p-6 mb-6"
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-brand-amber" />
             <h2 className="text-lg font-bold text-white">Today's Plan</h2>
@@ -242,6 +243,9 @@ Streak: ${streak.currentStreak} days current, ${streak.longestStreak} best`;
             )}
             {dailyPlan ? "Regenerate" : "Generate Plan"}
           </button>
+        </div>
+        <div className="mb-4">
+          <GenerationConfigBar compact />
         </div>
 
         {planLoading && (
