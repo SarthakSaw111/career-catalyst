@@ -20,8 +20,43 @@ import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
 import GenerationConfigBar from "../components/shared/GenerationConfigBar";
 
+const COURSE_DEPTHS = [
+  {
+    id: "nano",
+    label: "Nano Course",
+    emoji: "⚡",
+    desc: "Quick overview — 2-3 sections, 2-3 topics each",
+    rules:
+      "Create exactly 2-3 sections. Each section should have 2-3 topics. Each topic should have 2-3 subtopics. Keep it concise and focused on essentials only.",
+  },
+  {
+    id: "short",
+    label: "Short Course",
+    emoji: "📝",
+    desc: "Focused learning — 3-4 sections, 3-4 topics each",
+    rules:
+      "Create exactly 3-4 sections. Each section should have 3-4 topics. Each topic should have 3-4 subtopics. Cover the key areas without going too broad.",
+  },
+  {
+    id: "detailed",
+    label: "Detailed Course",
+    emoji: "📚",
+    desc: "Comprehensive — 5-8 sections, 3-5 topics each",
+    rules:
+      "Create 5-8 sections covering the full breadth of the subject. Each section should have 3-5 topics. Each topic should have 4-6 subtopics. Be thorough and comprehensive.",
+  },
+  {
+    id: "natural",
+    label: "Natural / Full",
+    emoji: "🌊",
+    desc: "AI decides — as many sections & topics as needed to fully cover the subject",
+    rules:
+      "Create as many sections and topics as naturally needed to comprehensively cover ALL concepts of this subject. Do NOT limit yourself to a fixed number. Cover every key area, subtopic, and concept that a learner would need. The course should be exhaustive and production-ready.",
+  },
+];
+
 const MODULE_PROMPT = `You are an expert curriculum designer and learning architect.
-The user wants to create a comprehensive learning module. Based on their description, generate a complete structured roadmap.
+The user wants to create a learning module. Based on their description and desired depth, generate a structured roadmap.
 
 Return JSON with this EXACT structure:
 {
@@ -45,9 +80,7 @@ Return JSON with this EXACT structure:
 }
 
 Rules:
-- Create 4-8 sections covering the full breadth of the subject
-- Each section should have 2-5 topics
-- Each topic should have 3-6 subtopics (these are the actual learnable units)
+- STRICTLY follow the depth/size constraints provided below
 - Progress from fundamentals to advanced
 - Include practical/hands-on topics, not just theory
 - If the topic is technical, include interview-relevant sections
@@ -65,6 +98,7 @@ export default function ModuleBuilderPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState("list"); // list, create, edit
   const [description, setDescription] = useState("");
+  const [courseDepth, setCourseDepth] = useState("short");
   const [generating, setGenerating] = useState(false);
   const [generatedModule, setGeneratedModule] = useState(null);
   const [editingModule, setEditingModule] = useState(null);
@@ -77,21 +111,23 @@ export default function ModuleBuilderPage() {
     setGenerating(true);
     setGeneratedModule(null);
     try {
+      const depth =
+        COURSE_DEPTHS.find((d) => d.id === courseDepth) || COURSE_DEPTHS[1];
       const result = await sendPromptJSON(
-        MODULE_PROMPT,
-        `Create a comprehensive learning module for: "${description.trim()}"
+        MODULE_PROMPT + `\n\nDEPTH CONSTRAINT (${depth.label}): ${depth.rules}`,
+        `Create a ${depth.label.toLowerCase()} learning module for: "${description.trim()}"
         
 I'm Sarthak Saw, AI/ML Engineer with 1.5 years experience at a startup.
 I work with LLMs, RAG pipelines, multi-agent systems, Python, C++, JavaScript.
 I want DEEP knowledge, not surface-level content.
-Make it comprehensive enough to crack interviews at Google or any top company.`,
+IMPORTANT: This is a ${depth.label.toUpperCase()} — strictly follow the size constraints.`,
       );
       setGeneratedModule(result);
     } catch (err) {
       alert(`Error: ${err.message}`);
     }
     setGenerating(false);
-  }, [geminiReady, description]);
+  }, [geminiReady, description, courseDepth]);
 
   // ─── Save module ───
   const handleSave = useCallback(async () => {
@@ -337,6 +373,41 @@ or: 'Quantitative finance and algorithmic trading with Python'"
               className="textarea-field min-h-[150px]"
             />
           </div>
+
+          {/* Course Depth Selector */}
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Course Depth
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {COURSE_DEPTHS.map((depth) => (
+                <button
+                  key={depth.id}
+                  onClick={() => setCourseDepth(depth.id)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    courseDepth === depth.id
+                      ? "border-brand-indigo bg-brand-indigo/10 ring-1 ring-brand-indigo/30"
+                      : "border-dark-500/30 bg-dark-700/30 hover:border-dark-400/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">{depth.emoji}</span>
+                    <span
+                      className={`text-sm font-semibold ${
+                        courseDepth === depth.id
+                          ? "text-brand-indigo-light"
+                          : "text-white"
+                      }`}
+                    >
+                      {depth.label}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-dark-300">{depth.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex items-center gap-3">
             <button
               onClick={handleGenerate}

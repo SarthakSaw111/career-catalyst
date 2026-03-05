@@ -9,6 +9,8 @@ import {
   PenTool,
   Save,
   CheckCircle2,
+  Edit3,
+  RotateCcw,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { ENGLISH_TRACKS } from "../data/roadmaps";
@@ -22,6 +24,26 @@ import * as storage from "../store/storage";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
 import GenerationConfigBar from "../components/shared/GenerationConfigBar";
+import RoadmapEditor from "../components/shared/RoadmapEditor";
+
+// Adapt English tracks for the RoadmapEditor (topics → concepts)
+function tracksToEditorFormat(tracks) {
+  return tracks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    icon: t.icon,
+    concepts: [...t.topics],
+  }));
+}
+
+function editorFormatToTracks(data) {
+  return data.map((d) => ({
+    id: d.id,
+    title: d.title,
+    icon: d.icon,
+    topics: [...(d.concepts || [])],
+  }));
+}
 
 export default function EnglishPage() {
   const { englishProgress, updateEnglishProgress, geminiReady } = useApp();
@@ -37,7 +59,16 @@ export default function EnglishPage() {
   const [writingText, setWritingText] = useState("");
   const [writingFeedback, setWritingFeedback] = useState("");
   const [contentSaved, setContentSaved] = useState(false);
+  const [editingRoadmap, setEditingRoadmap] = useState(false);
+  const [customTracks, setCustomTracks] = useState(null);
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    const saved = storage.getCustomRoadmap("english");
+    if (saved) setCustomTracks(saved);
+  }, []);
+
+  const activeTracks = customTracks || ENGLISH_TRACKS;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -222,44 +253,92 @@ export default function EnglishPage() {
           </button>
         </div>
 
-        {/* Topic Tracks */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {ENGLISH_TRACKS.map((track, i) => (
-            <motion.div
-              key={track.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="glass-card p-5"
+        {/* Edit Controls */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setEditingRoadmap(!editingRoadmap)}
+            className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all border
+              ${
+                editingRoadmap
+                  ? "bg-brand-amber/15 border-brand-amber/30 text-brand-amber"
+                  : "bg-dark-700/50 border-dark-500/30 text-dark-300 hover:text-white"
+              }`}
+          >
+            <Edit3 className="w-3 h-3" />{" "}
+            {editingRoadmap ? "Stop Editing" : "Edit Tracks"}
+          </button>
+          {customTracks && (
+            <button
+              onClick={() => {
+                storage.resetRoadmapToDefault("english");
+                setCustomTracks(null);
+                setEditingRoadmap(false);
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg bg-dark-700/50 border border-dark-500/30 text-dark-300 hover:text-white flex items-center gap-1.5 transition-all"
             >
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-2xl">{track.icon}</span>
-                <h3 className="text-base font-bold text-white">
-                  {track.title}
-                </h3>
-              </div>
-              <div className="space-y-1">
-                {track.topics.map((topic) => (
-                  <button
-                    key={topic}
-                    onClick={() => handleLearn(track, topic)}
-                    className="w-full text-left text-xs text-dark-200 hover:text-brand-indigo-light px-3 py-2 rounded-lg hover:bg-dark-600/30 transition-all"
-                  >
-                    {topic}
-                  </button>
-                ))}
-              </div>
-              {track.id === "conversation" && (
-                <button
-                  onClick={() => startConversation(track.topics[0])}
-                  className="mt-3 text-xs text-brand-indigo-light hover:text-brand-indigo font-medium"
-                >
-                  → Start practice conversation
-                </button>
-              )}
-            </motion.div>
-          ))}
+              <RotateCcw className="w-3 h-3" /> Reset Default
+            </button>
+          )}
         </div>
+
+        {editingRoadmap ? (
+          <RoadmapEditor
+            roadmap={tracksToEditorFormat(activeTracks)}
+            onChange={(updated) =>
+              setCustomTracks(editorFormatToTracks(updated))
+            }
+            moduleTitle="English Lab"
+            format="dsa"
+            onSave={() => {
+              storage.saveCustomRoadmap(
+                "english",
+                customTracks || activeTracks,
+              );
+              setEditingRoadmap(false);
+            }}
+          />
+        ) : (
+          <>
+            {/* Topic Tracks */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeTracks.map((track, i) => (
+                <motion.div
+                  key={track.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="glass-card p-5"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-2xl">{track.icon}</span>
+                    <h3 className="text-base font-bold text-white">
+                      {track.title}
+                    </h3>
+                  </div>
+                  <div className="space-y-1">
+                    {track.topics.map((topic) => (
+                      <button
+                        key={topic}
+                        onClick={() => handleLearn(track, topic)}
+                        className="w-full text-left text-xs text-dark-200 hover:text-brand-indigo-light px-3 py-2 rounded-lg hover:bg-dark-600/30 transition-all"
+                      >
+                        {topic}
+                      </button>
+                    ))}
+                  </div>
+                  {track.id === "conversation" && (
+                    <button
+                      onClick={() => startConversation(track.topics[0])}
+                      className="mt-3 text-xs text-brand-indigo-light hover:text-brand-indigo font-medium"
+                    >
+                      → Start practice conversation
+                    </button>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -289,17 +368,29 @@ export default function EnglishPage() {
                   <button
                     onClick={() => {
                       const cacheKey = `english:${selectedTrack?.id}:${selectedTopic}`;
-                      storage.setCachedContent(cacheKey, content, "english", selectedTopic);
+                      storage.setCachedContent(
+                        cacheKey,
+                        content,
+                        "english",
+                        selectedTopic,
+                      );
                       setContentSaved(true);
                       setTimeout(() => setContentSaved(false), 2000);
                     }}
                     className="btn-ghost text-xs flex items-center gap-1.5"
                   >
-                    {contentSaved ? <CheckCircle2 className="w-3.5 h-3.5 text-brand-emerald" /> : <Save className="w-3.5 h-3.5" />}
+                    {contentSaved ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-brand-emerald" />
+                    ) : (
+                      <Save className="w-3.5 h-3.5" />
+                    )}
                     {contentSaved ? "Saved!" : "Save"}
                   </button>
                   <button
-                    onClick={() => selectedTopic && handleLearn(selectedTrack, selectedTopic, true)}
+                    onClick={() =>
+                      selectedTopic &&
+                      handleLearn(selectedTrack, selectedTopic, true)
+                    }
                     className="btn-ghost text-xs flex items-center gap-1.5"
                     disabled={loading}
                   >

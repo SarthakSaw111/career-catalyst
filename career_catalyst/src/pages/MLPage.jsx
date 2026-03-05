@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   BookOpen,
@@ -11,6 +11,8 @@ import {
   ChevronRight,
   CheckCircle2,
   Save,
+  Edit3,
+  RotateCcw,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { ML_ROADMAP } from "../data/roadmaps";
@@ -25,6 +27,7 @@ import * as storage from "../store/storage";
 import MarkdownRenderer from "../components/shared/MarkdownRenderer";
 import LoadingDots from "../components/shared/LoadingDots";
 import GenerationConfigBar from "../components/shared/GenerationConfigBar";
+import RoadmapEditor from "../components/shared/RoadmapEditor";
 
 export default function MLPage() {
   const { mlProgress, updateMLProgress, geminiReady } = useApp();
@@ -42,6 +45,17 @@ export default function MLPage() {
   const [expandedSections, setExpandedSections] = useState({});
   const [contentSaved, setContentSaved] = useState(false);
   const [lastSubtopic, setLastSubtopic] = useState(null);
+  const [editingRoadmap, setEditingRoadmap] = useState(false);
+  const [customRoadmap, setCustomRoadmap] = useState(null);
+
+  // Load custom roadmap on mount
+  useEffect(() => {
+    const saved = storage.getCustomRoadmap("ml");
+    if (saved) setCustomRoadmap(saved);
+  }, []);
+
+  // Use custom roadmap if available, else default
+  const activeRoadmap = customRoadmap || ML_ROADMAP;
 
   const toggleSection = (sectionId) => {
     setExpandedSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
@@ -189,82 +203,129 @@ export default function MLPage() {
         <div className="w-80 flex-shrink-0">
           <div className="sticky top-6">
             <h1 className="text-2xl font-bold text-white mb-2">ML & AI</h1>
-            <p className="text-sm text-dark-200 mb-4">
+            <p className="text-sm text-dark-200 mb-3">
               Deep knowledge that builds your foundation for any interview.
             </p>
 
-            <div className="space-y-2">
-              {ML_ROADMAP.map((section) => (
-                <div key={section.id} className="glass-card overflow-hidden">
-                  <button
-                    onClick={() => toggleSection(section.id)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-dark-600/30 transition-all"
-                  >
-                    <span className="text-lg">{section.icon}</span>
-                    <span className="text-sm font-semibold text-white flex-1 text-left">
-                      {section.title}
-                    </span>
-                    {expandedSections[section.id] ? (
-                      <ChevronDown className="w-4 h-4 text-dark-300" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-dark-300" />
-                    )}
-                  </button>
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                onClick={() => setEditingRoadmap(!editingRoadmap)}
+                className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all border
+                  ${
+                    editingRoadmap
+                      ? "bg-brand-amber/15 border-brand-amber/30 text-brand-amber"
+                      : "bg-dark-700/50 border-dark-500/30 text-dark-300 hover:text-white"
+                  }`}
+              >
+                <Edit3 className="w-3 h-3" />{" "}
+                {editingRoadmap ? "Stop Editing" : "Edit Roadmap"}
+              </button>
+              {customRoadmap && (
+                <button
+                  onClick={() => {
+                    storage.resetRoadmapToDefault("ml");
+                    setCustomRoadmap(null);
+                    setEditingRoadmap(false);
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-dark-700/50 border border-dark-500/30 text-dark-300 hover:text-white flex items-center gap-1.5 transition-all"
+                >
+                  <RotateCcw className="w-3 h-3" /> Reset to Default
+                </button>
+              )}
+            </div>
 
-                  {expandedSections[section.id] && (
-                    <div className="px-3 pb-3 space-y-1 animate-fade-in">
-                      {section.topics.map((topic) => (
-                        <div key={topic.id}>
-                          <div className="flex items-center gap-2 px-3 py-2">
-                            {isTopicLearned(section.id, topic.id) ? (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-brand-emerald flex-shrink-0" />
-                            ) : (
-                              <div className="w-3.5 h-3.5 rounded-full border border-dark-400 flex-shrink-0" />
-                            )}
-                            <span className="text-xs font-medium text-dark-200">
-                              {topic.title}
-                            </span>
-                          </div>
-                          <div className="ml-8 space-y-0.5">
-                            {topic.subtopics.map((sub) => (
-                              <button
-                                key={sub}
-                                onClick={() => handleLearn(section, topic, sub)}
-                                className="w-full text-left text-[11px] text-dark-300 hover:text-brand-indigo-light px-2 py-1 rounded hover:bg-dark-600/30 transition-all"
-                              >
-                                {sub}
-                              </button>
-                            ))}
-                            <div className="flex gap-1 mt-1 px-2">
-                              <button
-                                onClick={() => handleQuiz(section, topic)}
-                                className="text-[10px] px-2 py-0.5 rounded bg-brand-amber/10 text-brand-amber-light hover:bg-brand-amber/20 transition-all"
-                              >
-                                Quiz
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedSection(section);
-                                  setSelectedTopic(topic);
-                                  setActiveMode("discuss");
-                                  setChatMessages([]);
-                                  resetChatSession(
-                                    `ml-${section.id}-${topic.id}`,
-                                  );
-                                }}
-                                className="text-[10px] px-2 py-0.5 rounded bg-brand-indigo/10 text-brand-indigo-light hover:bg-brand-indigo/20 transition-all"
-                              >
-                                Discuss
-                              </button>
+            {editingRoadmap ? (
+              <div className="max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+                <RoadmapEditor
+                  roadmap={activeRoadmap}
+                  onChange={(updated) => setCustomRoadmap(updated)}
+                  moduleTitle="ML & AI"
+                  format="nested"
+                  onSave={() => {
+                    storage.saveCustomRoadmap(
+                      "ml",
+                      customRoadmap || activeRoadmap,
+                    );
+                    setEditingRoadmap(false);
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+                {activeRoadmap.map((section) => (
+                  <div key={section.id} className="glass-card overflow-hidden">
+                    <button
+                      onClick={() => toggleSection(section.id)}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-dark-600/30 transition-all"
+                    >
+                      <span className="text-lg">{section.icon}</span>
+                      <span className="text-sm font-semibold text-white flex-1 text-left">
+                        {section.title}
+                      </span>
+                      {expandedSections[section.id] ? (
+                        <ChevronDown className="w-4 h-4 text-dark-300" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-dark-300" />
+                      )}
+                    </button>
+
+                    {expandedSections[section.id] && (
+                      <div className="px-3 pb-3 space-y-1 animate-fade-in">
+                        {section.topics.map((topic) => (
+                          <div key={topic.id}>
+                            <div className="flex items-center gap-2 px-3 py-2">
+                              {isTopicLearned(section.id, topic.id) ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-brand-emerald flex-shrink-0" />
+                              ) : (
+                                <div className="w-3.5 h-3.5 rounded-full border border-dark-400 flex-shrink-0" />
+                              )}
+                              <span className="text-xs font-medium text-dark-200">
+                                {topic.title}
+                              </span>
+                            </div>
+                            <div className="ml-8 space-y-0.5">
+                              {topic.subtopics.map((sub) => (
+                                <button
+                                  key={sub}
+                                  onClick={() =>
+                                    handleLearn(section, topic, sub)
+                                  }
+                                  className="w-full text-left text-[11px] text-dark-300 hover:text-brand-indigo-light px-2 py-1 rounded hover:bg-dark-600/30 transition-all"
+                                >
+                                  {sub}
+                                </button>
+                              ))}
+                              <div className="flex gap-1 mt-1 px-2">
+                                <button
+                                  onClick={() => handleQuiz(section, topic)}
+                                  className="text-[10px] px-2 py-0.5 rounded bg-brand-amber/10 text-brand-amber-light hover:bg-brand-amber/20 transition-all"
+                                >
+                                  Quiz
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedSection(section);
+                                    setSelectedTopic(topic);
+                                    setActiveMode("discuss");
+                                    setChatMessages([]);
+                                    resetChatSession(
+                                      `ml-${section.id}-${topic.id}`,
+                                    );
+                                  }}
+                                  className="text-[10px] px-2 py-0.5 rounded bg-brand-indigo/10 text-brand-indigo-light hover:bg-brand-indigo/20 transition-all"
+                                >
+                                  Discuss
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Stats */}
             <div className="glass-card p-4 mt-4">

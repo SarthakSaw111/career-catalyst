@@ -277,3 +277,23 @@ export async function syncFromSupabase() {
     }
   }
 }
+
+// ─── Custom Roadmaps (user-edited built-in module roadmaps) ───
+const CUSTOM_ROADMAPS_KEY = "cc_custom_roadmaps";
+
+export function getCustomRoadmap(moduleSlug) {
+  const all = getItem(CUSTOM_ROADMAPS_KEY) || {};
+  return all[moduleSlug] || null;
+}
+
+export function saveCustomRoadmap(moduleSlug, roadmap) {
+  const all = getItem(CUSTOM_ROADMAPS_KEY) || {};
+  all[moduleSlug] = roadmap;
+  setItem(CUSTOM_ROADMAPS_KEY, all);
+}
+
+export function resetRoadmapToDefault(moduleSlug) {
+  const all = getItem(CUSTOM_ROADMAPS_KEY) || {};
+  delete all[moduleSlug];
+  setItem(CUSTOM_ROADMAPS_KEY, all);
+}

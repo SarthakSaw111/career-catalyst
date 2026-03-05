@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   BookOpen,
@@ -7,14 +7,27 @@ import {
   Lock,
   ChevronRight,
   ArrowLeft,
+  Edit3,
+  RotateCcw,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { DSA_ROADMAP } from "../data/roadmaps";
+import * as storage from "../store/storage";
 import DSATopicView from "../components/dsa/DSATopicView";
+import RoadmapEditor from "../components/shared/RoadmapEditor";
 
 export default function DSAPage() {
   const { dsaProgress } = useApp();
   const [selectedTopic, setSelectedTopic] = useState(null);
+  const [editingRoadmap, setEditingRoadmap] = useState(false);
+  const [customRoadmap, setCustomRoadmap] = useState(null);
+
+  useEffect(() => {
+    const saved = storage.getCustomRoadmap("dsa");
+    if (saved) setCustomRoadmap(saved);
+  }, []);
+
+  const activeRoadmap = customRoadmap || DSA_ROADMAP;
 
   if (selectedTopic) {
     return (
@@ -65,113 +78,154 @@ export default function DSAPage() {
                   (t) => t.conceptLearned,
                 ).length
               }
-              /{DSA_ROADMAP.length} topics learned
+              /{activeRoadmap.length} topics learned
             </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setEditingRoadmap(!editingRoadmap)}
+              className={`text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all border
+                ${
+                  editingRoadmap
+                    ? "bg-brand-amber/15 border-brand-amber/30 text-brand-amber"
+                    : "bg-dark-700/50 border-dark-500/30 text-dark-300 hover:text-white"
+                }`}
+            >
+              <Edit3 className="w-3 h-3" />{" "}
+              {editingRoadmap ? "Stop Editing" : "Edit Roadmap"}
+            </button>
+            {customRoadmap && (
+              <button
+                onClick={() => {
+                  storage.resetRoadmapToDefault("dsa");
+                  setCustomRoadmap(null);
+                  setEditingRoadmap(false);
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-dark-700/50 border border-dark-500/30 text-dark-300 hover:text-white flex items-center gap-1.5 transition-all"
+              >
+                <RotateCcw className="w-3 h-3" /> Reset Default
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Topic Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {DSA_ROADMAP.map((topic, index) => {
-          const status = getTopicStatus(topic.id);
-          const unlocked = isUnlocked(topic);
-          const progress = dsaProgress.topics[topic.id];
+      {editingRoadmap ? (
+        <RoadmapEditor
+          roadmap={activeRoadmap}
+          onChange={(updated) => setCustomRoadmap(updated)}
+          moduleTitle="DSA & Coding"
+          format="dsa"
+          onSave={() => {
+            storage.saveCustomRoadmap("dsa", customRoadmap || activeRoadmap);
+            setEditingRoadmap(false);
+          }}
+        />
+      ) : (
+        /* Topic Grid */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {activeRoadmap.map((topic, index) => {
+            const status = getTopicStatus(topic.id);
+            const unlocked = isUnlocked(topic);
+            const progress = dsaProgress.topics[topic.id];
 
-          return (
-            <motion.div
-              key={topic.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-            >
-              <button
-                onClick={() => unlocked && setSelectedTopic(topic)}
-                disabled={!unlocked}
-                className={`topic-card w-full text-left relative overflow-hidden
+            return (
+              <motion.div
+                key={topic.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+              >
+                <button
+                  onClick={() => unlocked && setSelectedTopic(topic)}
+                  disabled={!unlocked}
+                  className={`topic-card w-full text-left relative overflow-hidden
                   ${!unlocked ? "opacity-50 cursor-not-allowed" : ""}
                   ${status === "completed" ? "border-brand-emerald/30" : ""}
                   ${status === "in-progress" ? "border-brand-indigo/30" : ""}`}
-              >
-                {/* Status indicator */}
-                {status === "completed" && (
-                  <div className="absolute top-3 right-3">
-                    <CheckCircle2 className="w-5 h-5 text-brand-emerald" />
-                  </div>
-                )}
-                {!unlocked && (
-                  <div className="absolute top-3 right-3">
-                    <Lock className="w-4 h-4 text-dark-300" />
-                  </div>
-                )}
+                >
+                  {/* Status indicator */}
+                  {status === "completed" && (
+                    <div className="absolute top-3 right-3">
+                      <CheckCircle2 className="w-5 h-5 text-brand-emerald" />
+                    </div>
+                  )}
+                  {!unlocked && (
+                    <div className="absolute top-3 right-3">
+                      <Lock className="w-4 h-4 text-dark-300" />
+                    </div>
+                  )}
 
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">{topic.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-bold text-white mb-1">
-                      {topic.title}
-                    </h3>
-                    <p className="text-xs text-dark-200 line-clamp-2 mb-2">
-                      {topic.description}
-                    </p>
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">{topic.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-bold text-white mb-1">
+                        {topic.title}
+                      </h3>
+                      <p className="text-xs text-dark-200 line-clamp-2 mb-2">
+                        {topic.description}
+                      </p>
 
-                    {/* Difficulty badge */}
-                    <span
-                      className={`badge ${topic.difficulty === "easy" ? "badge-easy" : topic.difficulty === "medium" ? "badge-medium" : "badge-hard"}`}
-                    >
-                      {topic.difficulty}
-                    </span>
+                      {/* Difficulty badge */}
+                      <span
+                        className={`badge ${topic.difficulty === "easy" ? "badge-easy" : topic.difficulty === "medium" ? "badge-medium" : "badge-hard"}`}
+                      >
+                        {topic.difficulty}
+                      </span>
 
-                    {/* Progress bar */}
-                    {progress && progress.problemsSolved > 0 && (
-                      <div className="mt-2">
-                        <div className="flex justify-between text-xs text-dark-200 mb-1">
-                          <span>{progress.problemsSolved} solved</span>
-                          <span>{topic.estimatedProblems} total</span>
+                      {/* Progress bar */}
+                      {progress && progress.problemsSolved > 0 && (
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs text-dark-200 mb-1">
+                            <span>{progress.problemsSolved} solved</span>
+                            <span>{topic.estimatedProblems} total</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-dark-600 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-brand-indigo to-brand-emerald rounded-full transition-all duration-500"
+                              style={{
+                                width: `${Math.min(100, (progress.problemsSolved / topic.estimatedProblems) * 100)}%`,
+                              }}
+                            />
+                          </div>
                         </div>
-                        <div className="w-full h-1.5 bg-dark-600 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-brand-indigo to-brand-emerald rounded-full transition-all duration-500"
-                            style={{
-                              width: `${Math.min(100, (progress.problemsSolved / topic.estimatedProblems) * 100)}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Concepts preview */}
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {topic.concepts.slice(0, 3).map((c, i) => (
-                        <span
-                          key={i}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-dark-600 text-dark-200"
-                        >
-                          {c}
-                        </span>
-                      ))}
-                      {topic.concepts.length > 3 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-dark-600 text-dark-300">
-                          +{topic.concepts.length - 3}
-                        </span>
                       )}
+
+                      {/* Concepts preview */}
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {topic.concepts.slice(0, 3).map((c, i) => (
+                          <span
+                            key={i}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-dark-600 text-dark-200"
+                          >
+                            {c}
+                          </span>
+                        ))}
+                        {topic.concepts.length > 3 && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-dark-600 text-dark-300">
+                            +{topic.concepts.length - 3}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {unlocked && status !== "completed" && (
-                  <div className="flex items-center justify-end mt-3 text-brand-indigo-light">
-                    <span className="text-xs font-medium">
-                      {status === "in-progress" ? "Continue" : "Start Learning"}
-                    </span>
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </div>
-                )}
-              </button>
-            </motion.div>
-          );
-        })}
-      </div>
+                  {unlocked && status !== "completed" && (
+                    <div className="flex items-center justify-end mt-3 text-brand-indigo-light">
+                      <span className="text-xs font-medium">
+                        {status === "in-progress"
+                          ? "Continue"
+                          : "Start Learning"}
+                      </span>
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </div>
+                  )}
+                </button>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
