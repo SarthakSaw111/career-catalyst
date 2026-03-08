@@ -1,18 +1,28 @@
 import React, { useState, useEffect } from "react";
-import { Cpu, Brain, ChevronDown, Zap } from "lucide-react";
+import { Cpu, Brain, ChevronDown, Zap, FileText } from "lucide-react";
 import {
   AVAILABLE_MODELS,
   getModelId,
   setModel,
   getThinkingConfig,
   setThinking,
+  getNoteSize,
+  setNoteSize as setNoteSizeConfig,
 } from "../../services/gemini";
+
+const NOTE_SIZES = [
+  { id: "none", label: "Natural", icon: "✨" },
+  { id: "quick", label: "Quick", icon: "⚡" },
+  { id: "normal", label: "Normal", icon: "📄" },
+  { id: "detailed", label: "Detailed", icon: "📚" },
+];
 
 export default function GenerationConfigBar({ compact = false }) {
   const [selectedModel, setSelectedModel] = useState(getModelId());
   const [thinkingOn, setThinkingOn] = useState(getThinkingConfig().enabled);
   const [budget, setBudget] = useState(getThinkingConfig().budget);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [noteSize, setNoteSize] = useState(getNoteSize());
 
   const currentModelInfo = AVAILABLE_MODELS.find((m) => m.id === selectedModel);
   const supportsThinking = currentModelInfo?.supportsThinking ?? false;
@@ -24,6 +34,10 @@ export default function GenerationConfigBar({ compact = false }) {
   useEffect(() => {
     setThinking(supportsThinking ? thinkingOn : false, budget);
   }, [thinkingOn, budget, supportsThinking]);
+
+  useEffect(() => {
+    setNoteSizeConfig(noteSize);
+  }, [noteSize]);
 
   const handleModelChange = (modelId) => {
     setSelectedModel(modelId);
@@ -89,6 +103,25 @@ export default function GenerationConfigBar({ compact = false }) {
             {thinkingOn ? "Thinking ON" : "Thinking OFF"}
           </button>
         )}
+
+        {/* Note size selector - compact */}
+        <div className="flex items-center gap-0.5 bg-dark-700/80 rounded-lg border border-dark-500/30 p-0.5">
+          {NOTE_SIZES.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setNoteSize(s.id)}
+              className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all
+                ${
+                  noteSize === s.id
+                    ? "bg-brand-indigo/20 text-brand-indigo-light border border-brand-indigo/30"
+                    : "text-dark-300 hover:text-dark-100"
+                }`}
+              title={`${s.label} notes`}
+            >
+              {s.icon} {s.label}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
@@ -158,6 +191,26 @@ export default function GenerationConfigBar({ compact = false }) {
           {thinkingOn ? "Thinking ON" : "Thinking OFF"}
         </button>
       )}
+
+      {/* Note size selector - full */}
+      <div className="flex items-center gap-1 bg-dark-700/60 rounded-lg border border-dark-500/30 p-0.5">
+        <FileText className="w-3.5 h-3.5 text-dark-300 ml-2" />
+        {NOTE_SIZES.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setNoteSize(s.id)}
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all
+              ${
+                noteSize === s.id
+                  ? "bg-brand-indigo/20 text-brand-indigo-light border border-brand-indigo/30"
+                  : "text-dark-300 hover:text-white"
+              }`}
+            title={`${s.label} notes`}
+          >
+            {s.icon} {s.label}
+          </button>
+        ))}
+      </div>
 
       {/* Thinking budget slider */}
       {supportsThinking && thinkingOn && (

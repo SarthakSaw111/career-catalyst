@@ -72,10 +72,7 @@ export default function SystemDesignPage() {
       try {
         const response = await sendPrompt(
           PROMPTS.SD_TEACH,
-          `Teach me about "${topic}" in the context of "${section.title}".
-         I have experience building: graph-DB recommendation engines, RAG pipelines, multi-agent systems, job recommendation with Typesense.
-         Go deep — architecture diagrams (ASCII), trade-offs, scaling strategies, interview follow-ups.
-         If this is a design problem, walk me through the full design process.`,
+          `Teach me about "${topic}" in the context of "${section.title}".`,
         );
         setContent(response);
 

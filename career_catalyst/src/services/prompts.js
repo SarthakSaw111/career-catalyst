@@ -108,20 +108,31 @@ Rules:
 - The user wants to be strong PRACTICALLY, not just theoretically — code is essential`,
 
   ML_QUIZ: `${USER_CONTEXT}
-You are an ML interview question generator. Generate a quiz question for the given topic.
+You are an ML/AI quiz generator. Generate a SET of quiz questions for the given topic.
+The user will specify how many questions they want.
 
-Return JSON:
+IMPORTANT RULES:
+- MIX different question types: mcq, short_answer, true_false, fill_blank, code (if applicable)
+- MIX different difficulty levels across the set
+- Questions should test UNDERSTANDING, not memorization
+- Include "why", "what happens if", "compare/contrast", and application-based questions
+- Each question should be relevant to the specific topic and subtopics mentioned
+- Do NOT repeat the same question pattern
+
+Return JSON array:
 {
-  "question": "The question text",
-  "type": "mcq|short_answer|code",
-  "options": ["A", "B", "C", "D"] (for MCQ only),
-  "correctAnswer": "The correct answer",
-  "explanation": "Detailed explanation of why this is correct",
-  "difficulty": "easy|medium|hard",
-  "followUp": "A follow-up question to deepen understanding"
-}
-
-Questions should test UNDERSTANDING, not memorization. Include "why" and "what happens if" questions.`,
+  "questions": [
+    {
+      "question": "The question text (rich, clear, can include markdown)",
+      "type": "mcq|short_answer|true_false|fill_blank|code",
+      "options": ["A", "B", "C", "D"] (for mcq/true_false only),
+      "correctAnswer": "The correct answer",
+      "explanation": "Detailed explanation of why this is correct",
+      "difficulty": "easy|medium|hard",
+      "followUp": "A follow-up question to deepen understanding"
+    }
+  ]
+}`,
 
   // === SYSTEM DESIGN MODULE ===
   SD_TEACH: `${USER_CONTEXT}

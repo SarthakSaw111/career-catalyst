@@ -71,7 +71,7 @@ export default function ChatPanel() {
   if (!chatOpen) return null;
 
   return (
-    <div className="fixed right-0 top-0 h-full w-[420px] bg-dark-900 border-l border-dark-600/50 z-50 flex flex-col animate-slide-right shadow-2xl">
+    <div className="fixed right-0 top-0 h-full w-full md:w-[420px] bg-dark-900 border-l border-dark-600/50 z-50 flex flex-col animate-slide-right shadow-2xl">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-dark-600/50">
         <div>

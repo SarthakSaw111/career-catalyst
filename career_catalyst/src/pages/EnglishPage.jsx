@@ -98,10 +98,7 @@ export default function EnglishPage() {
       try {
         const response = await sendPrompt(
           PROMPTS.ENGLISH_TEACH,
-          `Teach me about "${topic}" from the "${track.title}" track.
-         I'm an Indian tech professional preparing for interviews at top companies.
-         Include: clear explanation, examples (tech context), common mistakes, practice exercises.
-         Keep language simple but don't oversimplify — I want to actually learn.`,
+          `Teach me about "${topic}" from the "${track.title}" track.`,
         );
         setContent(response);
 

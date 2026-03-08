@@ -60,7 +60,13 @@ const bottomNavItems = [
   { path: "/settings", icon: "Settings", label: "Settings" },
 ];
 
-export default function Sidebar({ collapsed, setCollapsed }) {
+export default function Sidebar({
+  collapsed,
+  setCollapsed,
+  isMobile,
+  mobileOpen,
+  onMobileClose,
+}) {
   const {
     streak,
     setChatOpen,
@@ -91,11 +97,17 @@ export default function Sidebar({ collapsed, setCollapsed }) {
     emoji: m.icon,
   }));
 
+  // On mobile: slide-in overlay. On desktop: fixed sidebar.
+  const sidebarClasses = isMobile
+    ? `fixed left-0 top-0 h-full bg-dark-900 border-r border-dark-600/50 flex flex-col z-50 w-[280px] transition-transform duration-300 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`
+    : `fixed left-0 top-0 h-full bg-dark-900 border-r border-dark-600/50 flex flex-col z-40 transition-all duration-300 ${collapsed ? "w-[72px]" : "w-[260px]"}`;
+
+  const handleNavClick = () => {
+    if (isMobile) onMobileClose?.();
+  };
+
   return (
-    <aside
-      className={`fixed left-0 top-0 h-full bg-dark-900 border-r border-dark-600/50
-        flex flex-col z-40 transition-all duration-300 ${collapsed ? "w-[72px]" : "w-[260px]"}`}
-    >
+    <aside className={sidebarClasses}>
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-dark-600/50">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-indigo to-brand-emerald flex items-center justify-center flex-shrink-0">
@@ -136,7 +148,10 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 mt-4 px-3 space-y-1 overflow-y-auto">
+      <nav
+        className="flex-1 mt-4 px-3 space-y-1 overflow-y-auto"
+        onClick={handleNavClick}
+      >
         {/* Dashboard */}
         {topNavItems.map((item) => {
           const Icon = iconMap[item.icon];
@@ -271,14 +286,19 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
         <div className="p-3 space-y-2">
           <button
-            onClick={() => setChatOpen(true)}
+            onClick={() => {
+              setChatOpen(true);
+              handleNavClick();
+            }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
             bg-brand-indigo/10 text-brand-indigo-light hover:bg-brand-indigo/20 transition-all
-            ${collapsed ? "justify-center" : ""}`}
+            ${collapsed && !isMobile ? "justify-center" : ""}`}
             title="AI Chat"
           >
             <MessageCircle className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && <span className="text-sm font-medium">AI Chat</span>}
+            {(!collapsed || isMobile) && (
+              <span className="text-sm font-medium">AI Chat</span>
+            )}
           </button>
 
           {/* Auth info + Sign Out */}
@@ -305,19 +325,21 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             </div>
           )}
 
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg
-            text-dark-300 hover:text-white hover:bg-dark-700/50 transition-all
-            ${collapsed ? "justify-center" : ""}`}
-          >
-            {collapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-            {!collapsed && <span className="text-xs">Collapse</span>}
-          </button>
+          {!isMobile && (
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg
+              text-dark-300 hover:text-white hover:bg-dark-700/50 transition-all
+              ${collapsed ? "justify-center" : ""}`}
+            >
+              {collapsed ? (
+                <ChevronRight className="w-4 h-4" />
+              ) : (
+                <ChevronLeft className="w-4 h-4" />
+              )}
+              {!collapsed && <span className="text-xs">Collapse</span>}
+            </button>
+          )}
         </div>
       </div>
     </aside>

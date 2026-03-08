@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import { AppProvider, useApp } from "./context/AppContext";
 import Sidebar from "./components/layout/Sidebar";
@@ -15,9 +15,22 @@ import ModuleBuilderPage from "./pages/ModuleBuilderPage";
 import GenericModulePage from "./pages/GenericModulePage";
 import AuthPage from "./pages/AuthPage";
 import { isSupabaseConnected } from "./services/supabase";
+import { Menu } from "lucide-react";
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
 
 function AppContent() {
+  const isMobile = useIsMobile();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [authSkipped, setAuthSkipped] = useState(false);
   const { loading, authLoading, authUser, profile, chatOpen } = useApp();
 
@@ -41,15 +54,43 @@ function AppContent() {
 
   return (
     <div className="flex min-h-screen bg-dark-950">
+      {/* Mobile top bar */}
+      {isMobile && (
+        <div className="fixed top-0 left-0 right-0 z-50 flex items-center gap-3 px-4 py-3 bg-dark-900/95 backdrop-blur-lg border-b border-dark-600/50">
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            className="p-2 rounded-lg text-dark-200 hover:text-white hover:bg-dark-700 transition-all"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <h1 className="text-sm font-bold text-white">CareerCatalyst</h1>
+        </div>
+      )}
+
+      {/* Mobile overlay */}
+      {isMobile && mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       <Sidebar
-        collapsed={sidebarCollapsed}
+        collapsed={isMobile ? false : sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
+        isMobile={isMobile}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
       />
 
       <main
-        className={`flex-1 transition-all duration-300 ${
-          sidebarCollapsed ? "ml-[72px]" : "ml-[260px]"
-        } ${chatOpen ? "mr-[420px]" : ""}`}
+        className={`flex-1 min-w-0 overflow-x-hidden transition-all duration-300 ${
+          isMobile
+            ? "ml-0 pt-14"
+            : sidebarCollapsed
+              ? "ml-[72px]"
+              : "ml-[260px]"
+        } ${!isMobile && chatOpen ? "mr-[420px]" : ""}`}
       >
         <Routes>
           <Route path="/" element={<DashboardPage />} />

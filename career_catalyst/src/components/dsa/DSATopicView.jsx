@@ -86,9 +86,7 @@ export default function DSATopicView({ topic, onBack }) {
       try {
         const response = await sendPrompt(
           PROMPTS.DSA_TEACH,
-          `Teach me about "${concept}" in the context of "${topic.title}". 
-         Start from basics, build up to interview-level understanding.
-         Include Python code examples and time/space complexity analysis.`,
+          `Teach me about "${concept}" in the context of "${topic.title}".`,
         );
         setLearnContent(response);
 

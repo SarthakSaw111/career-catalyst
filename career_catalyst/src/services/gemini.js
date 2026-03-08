@@ -6,6 +6,23 @@ let chatSessions = {};
 let currentModelId = "gemini-2.5-flash";
 let thinkingEnabled = true;
 let thinkingBudget = 2048;
+let noteSize = "none"; // "none" | "quick" | "normal" | "detailed"
+let userContext = ""; // populated during onboarding
+
+// ─── User Context ───
+export function setUserContext(ctx) {
+  userContext = ctx;
+}
+export function getUserContext() {
+  return userContext;
+}
+
+function resolvePrompt(prompt) {
+  const ctx =
+    userContext ||
+    "The user is preparing for tech interviews. Adapt to their level.";
+  return prompt.replace(/\{USER_CONTEXT\}/g, ctx);
+}
 
 // ─── Token Usage Tracking ───
 const tokenUsage = {
@@ -114,6 +131,21 @@ export function getThinkingConfig() {
   return { enabled: thinkingEnabled, budget: thinkingBudget };
 }
 
+export function setNoteSize(size) {
+  noteSize = size;
+}
+
+export function getNoteSize() {
+  return noteSize;
+}
+
+const NOTE_SIZE_DIRECTIVES = {
+  none: "", // no directive — let the prompt speak naturally
+  quick: `\n\n[Length: Keep it short. Bullet points, key takeaways only. No fluff.]`,
+  normal: `\n\n[Length: Balanced. Cover the important points clearly without being exhaustive.]`,
+  detailed: `\n\n[Length: Go deep and comprehensive. Leave nothing out.]`,
+};
+
 export function isGeminiReady() {
   return currentModel !== null;
 }
@@ -157,7 +189,11 @@ export async function sendPrompt(systemPrompt, userMessage, options = {}) {
   checkRateLimit();
 
   try {
-    const fullPrompt = `${systemPrompt}\n\n---\n\nUser: ${userMessage}`;
+    const resolved = resolvePrompt(systemPrompt);
+    const sizeDirective = NOTE_SIZE_DIRECTIVES[noteSize] ?? "";
+    const fullPrompt = sizeDirective
+      ? `${resolved}${sizeDirective}\n\n---\n\nUser: ${userMessage}`
+      : `${resolved}\n\n---\n\nUser: ${userMessage}`;
     const result = await currentModel.generateContent({
       contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
       generationConfig: buildGenerationConfig(options),
@@ -176,13 +212,14 @@ export function getChatSession(sessionId, systemPrompt) {
     throw new Error("Gemini not initialized. Add your API key in Settings.");
 
   if (!chatSessions[sessionId]) {
+    const resolved = resolvePrompt(systemPrompt);
     chatSessions[sessionId] = currentModel.startChat({
       history: [
         {
           role: "user",
           parts: [
             {
-              text: `System Instructions: ${systemPrompt}\n\nAcknowledge understanding and wait for my first message.`,
+              text: `System Instructions: ${resolved}\n\nAcknowledge understanding and wait for my first message.`,
             },
           ],
         },
