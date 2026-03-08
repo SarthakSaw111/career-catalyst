@@ -384,29 +384,39 @@ export function AppProvider({ children }) {
     [customModules],
   );
 
-  const updateCustomModule = useCallback(async (moduleId, updates) => {
-    setCustomModules((prev) =>
-      prev.map((m) => (m.id === moduleId ? { ...m, ...updates } : m)),
-    );
-    const all = storage
-      .getLocalModules()
-      .map((m) => (m.id === moduleId ? { ...m, ...updates } : m));
-    storage.saveLocalModules(all);
-    if (isSupabaseReady()) {
-      const { updateModule } = await import("../services/supabase");
-      await updateModule(moduleId, updates);
-    }
-  }, []);
+  const updateCustomModule = useCallback(
+    async (moduleId, updates) => {
+      setCustomModules((prev) =>
+        prev.map((m) => (m.id === moduleId ? { ...m, ...updates } : m)),
+      );
+      const all = storage
+        .getLocalModules()
+        .map((m) => (m.id === moduleId ? { ...m, ...updates } : m));
+      storage.saveLocalModules(all);
+      if (isSupabaseReady()) {
+        const { updateModule } = await import("../services/supabase");
+        // Find the slug for this module to use as the Supabase lookup key
+        const mod = customModules.find((m) => m.id === moduleId);
+        const slug = mod?.slug || updates.slug || moduleId;
+        await updateModule(slug, updates);
+      }
+    },
+    [customModules],
+  );
 
-  const deleteCustomModule = useCallback(async (moduleId) => {
-    setCustomModules((prev) => prev.filter((m) => m.id !== moduleId));
-    const all = storage.getLocalModules().filter((m) => m.id !== moduleId);
-    storage.saveLocalModules(all);
-    if (isSupabaseReady()) {
-      const { deleteModule } = await import("../services/supabase");
-      await deleteModule(moduleId);
-    }
-  }, []);
+  const deleteCustomModule = useCallback(
+    async (moduleId) => {
+      const mod = customModules.find((m) => m.id === moduleId);
+      setCustomModules((prev) => prev.filter((m) => m.id !== moduleId));
+      const all = storage.getLocalModules().filter((m) => m.id !== moduleId);
+      storage.saveLocalModules(all);
+      if (isSupabaseReady()) {
+        const { deleteModule } = await import("../services/supabase");
+        await deleteModule(mod?.slug || moduleId);
+      }
+    },
+    [customModules],
+  );
 
   const value = {
     profile,

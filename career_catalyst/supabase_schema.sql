@@ -4,16 +4,16 @@
 -- IMPORTANT: This schema uses Supabase Auth. Users sign up with email/password.
 -- The user_id references auth.users.id (UUID).
 
--- Drop old permissive policies if upgrading from v1
-DO $$ BEGIN
-  DROP POLICY IF EXISTS "Allow all for profiles" ON profiles;
-  DROP POLICY IF EXISTS "Allow all for modules" ON modules;
-  DROP POLICY IF EXISTS "Allow all for generated_content" ON generated_content;
-  DROP POLICY IF EXISTS "Allow all for progress" ON progress;
-  DROP POLICY IF EXISTS "Allow all for settings" ON settings;
-  DROP POLICY IF EXISTS "Allow all for streaks" ON streaks;
-EXCEPTION WHEN undefined_table THEN NULL;
-END $$;
+-- -- Drop old permissive policies if upgrading from v1
+-- DO $$ BEGIN
+--   DROP POLICY IF EXISTS "Allow all for profiles" ON profiles;
+--   DROP POLICY IF EXISTS "Allow all for modules" ON modules;
+--   DROP POLICY IF EXISTS "Allow all for generated_content" ON generated_content;
+--   DROP POLICY IF EXISTS "Allow all for progress" ON progress;
+--   DROP POLICY IF EXISTS "Allow all for settings" ON settings;
+--   DROP POLICY IF EXISTS "Allow all for streaks" ON streaks;
+-- EXCEPTION WHEN undefined_table THEN NULL;
+-- END $$;
 
 -- Profiles
 CREATE TABLE IF NOT EXISTS profiles (
@@ -81,10 +81,26 @@ CREATE TABLE IF NOT EXISTS streaks (
   UNIQUE(user_id)
 );
 
+-- Token usage tracking (per-call log + daily aggregates)
+CREATE TABLE IF NOT EXISTS token_usage (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  date TEXT NOT NULL, -- YYYY-MM-DD
+  model TEXT NOT NULL,
+  prompt_tokens INTEGER DEFAULT 0,
+  completion_tokens INTEGER DEFAULT 0,
+  thinking_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER DEFAULT 0,
+  call_count INTEGER DEFAULT 1,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, date, model)
+);
+
 -- Indexes for fast lookups
 CREATE INDEX IF NOT EXISTS idx_modules_user ON modules(user_id);
 CREATE INDEX IF NOT EXISTS idx_content_user_key ON generated_content(user_id, content_key);
 CREATE INDEX IF NOT EXISTS idx_progress_user_module ON progress(user_id, module);
+CREATE INDEX IF NOT EXISTS idx_token_usage_user_date ON token_usage(user_id, date);
 
 -- Row Level Security (RLS) — enable for all tables
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -93,6 +109,7 @@ ALTER TABLE generated_content ENABLE ROW LEVEL SECURITY;
 ALTER TABLE progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE streaks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE token_usage ENABLE ROW LEVEL SECURITY;
 
 -- Auth-based RLS: users can only access their own data
 -- auth.uid()::text matches user_id stored as TEXT
@@ -124,5 +141,10 @@ CREATE POLICY "Users manage own settings"
 
 CREATE POLICY "Users manage own streaks"
   ON streaks FOR ALL
+  USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY "Users manage own token_usage"
+  ON token_usage FOR ALL
   USING (user_id = auth.uid()::text)
   WITH CHECK (user_id = auth.uid()::text);

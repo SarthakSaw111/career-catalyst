@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   BookOpen,
@@ -12,6 +12,11 @@ import {
   Save,
   ArrowLeft,
   Edit3,
+  Timer,
+  ClipboardList,
+  Trophy,
+  Users,
+  AlertTriangle,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import {
@@ -78,6 +83,92 @@ Return JSON:
 }`;
 }
 
+function makePracticeExamPrompt(moduleTitle) {
+  return `You are a strict exam paper setter for "${moduleTitle}".
+Generate a REAL EXAM paper with mixed difficulty. This is a timed test — no hints, no fluff.
+
+RULES:
+- Questions MUST span across ALL the topics/subtopics provided
+- Mix types: mcq, short_answer, true_false, fill_blank
+- 30% easy, 50% medium, 20% hard
+- Each question must test genuine understanding
+- Include the topic/section each question belongs to
+- Make it feel like a real university/certification exam
+
+Return JSON:
+{
+  "questions": [
+    {
+      "question": "Clear, exam-style question text",
+      "type": "mcq|short_answer|true_false|fill_blank",
+      "options": ["A", "B", "C", "D"] (for mcq/true_false only),
+      "correctAnswer": "The correct answer",
+      "explanation": "Detailed explanation for review after exam",
+      "difficulty": "easy|medium|hard",
+      "topic": "Which topic/section this belongs to",
+      "marks": 1
+    }
+  ]
+}`;
+}
+
+const INTERVIEWER_PERSONAS = {
+  bro: {
+    name: "The Bro",
+    emoji: "😎",
+    style:
+      "Super chill, uses slang, calls you bro/dude, very encouraging, explains things with fun analogies. Keeps it real but hypes you up.",
+    greeting: "Yooo what's good bro! Ready to crush this? Let's goooo 🔥",
+  },
+  chill: {
+    name: "Chill Friend",
+    emoji: "🧘",
+    style:
+      "Calm, patient, warm. Like your best study buddy. Never rushes, always says 'no worries' when you're wrong. Makes you feel safe to make mistakes.",
+    greeting:
+      "Hey! Glad you're here. Take your time, no pressure at all. Let's just have a relaxed chat about this stuff.",
+  },
+  nerd: {
+    name: "The Nerd",
+    emoji: "🤓",
+    style:
+      "Extremely precise, loves going deep. Asks 'but WHY?' a lot. Gets excited about edge cases. Uses proper terminology. Genuinely passionate about the subject.",
+    greeting:
+      "Oh, fascinating! I've been thinking about this topic. Did you know... actually, let me test your understanding first. This is going to be fun!",
+  },
+  drill: {
+    name: "Drill Sergeant",
+    emoji: "🫡",
+    style:
+      "Strict, no-nonsense, demanding but fair. Expects crisp, clear answers. Calls out vague responses immediately. Tough love — pushes you to your limit because they believe in you.",
+    greeting:
+      "Alright, listen up. I'm not here to hold your hand. I'm here to make sure you're READY. Let's see what you've got. No excuses.",
+  },
+};
+
+function makeInterviewPrompt(moduleTitle, persona) {
+  const p = INTERVIEWER_PERSONAS[persona];
+  return `You are a live interview coach for "${moduleTitle}" with this personality:
+Name: ${p.name} ${p.emoji}
+Style: ${p.style}
+
+You are conducting a LIVE mock interview session. This is interactive — ask ONE question, wait for their answer, evaluate it, and ask the next.
+
+RULES:
+- Stay in character AT ALL TIMES
+- Ask questions relevant to the topics the user wants to practice
+- After each answer: give feedback IN CHARACTER, then ask the next question
+- Track their performance mentally
+- Mix difficulty: start easier, get harder based on their answers
+- After 5-8 questions (or when user says "done"), give a DETAILED scorecard:
+  - Overall rating (1-10)
+  - Topic-wise strength/weakness
+  - Specific improvements needed
+  - Character-appropriate encouragement
+
+Start with your greeting and first question.`;
+}
+
 export default function GenericModulePage() {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -107,6 +198,24 @@ export default function GenericModulePage() {
   const [expandedSections, setExpandedSections] = useState({});
   const [contentSaved, setContentSaved] = useState(false);
   const [progress, setProgress] = useState({ topics: {}, stats: {} });
+
+  // Practice exam state
+  const [practiceQuestions, setPracticeQuestions] = useState([]);
+  const [practiceIndex, setPracticeIndex] = useState(0);
+  const [practiceAnswers, setPracticeAnswers] = useState({});
+  const [practiceSubmitted, setPracticeSubmitted] = useState(false);
+  const [practiceTimer, setPracticeTimer] = useState(0);
+  const [practiceTimeLimit, setPracticeTimeLimit] = useState(15); // minutes
+  const [practiceQuestionCount, setPracticeQuestionCount] = useState(10);
+  const [practiceReport, setPracticeReport] = useState(null);
+  const practiceTimerRef = useRef(null);
+
+  // Interview mode state
+  const [interviewPersona, setInterviewPersona] = useState(null);
+  const [interviewMessages, setInterviewMessages] = useState([]);
+  const [interviewInput, setInterviewInput] = useState("");
+  const [interviewLoading, setInterviewLoading] = useState(false);
+  const [interviewTopic, setInterviewTopic] = useState(null);
 
   // Load progress
   useEffect(() => {
@@ -303,6 +412,169 @@ Test UNDERSTANDING, not memorization.`,
     }
   }, [quizIndex, quizQuestions, quizResult, quizAnswer]);
 
+  // ─── Practice Exam ───
+  const startPracticeExam = useCallback(async () => {
+    if (!geminiReady) return;
+    setActiveMode("practice");
+    setPracticeQuestions([]);
+    setPracticeIndex(0);
+    setPracticeAnswers({});
+    setPracticeSubmitted(false);
+    setPracticeReport(null);
+    setPracticeTimer(0);
+    setMobileShowContent(true);
+    setLoading(true);
+    try {
+      const allTopics = (moduleData?.roadmap || [])
+        .flatMap((s) =>
+          (s.topics || []).map(
+            (t) =>
+              `${s.title} > ${t.title}: ${t.subtopics?.join(", ") || "general"}`,
+          ),
+        )
+        .join("\n");
+      const data = await sendPromptJSON(
+        makePracticeExamPrompt(moduleData?.title || slug),
+        `Generate exactly ${practiceQuestionCount} exam questions spanning these topics:\n${allTopics}\n\nMix types and difficulties. This is a ${practiceTimeLimit}-minute timed exam.`,
+      );
+      const questions = data.questions || (Array.isArray(data) ? data : [data]);
+      setPracticeQuestions(questions);
+      // Start timer
+      if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
+      practiceTimerRef.current = setInterval(() => {
+        setPracticeTimer((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      setContent(`⚠️ Error: ${err.message}`);
+    }
+    setLoading(false);
+  }, [geminiReady, slug, moduleData, practiceQuestionCount, practiceTimeLimit]);
+
+  const submitPracticeExam = useCallback(() => {
+    if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
+    let correct = 0;
+    let totalMarks = 0;
+    const topicScores = {};
+    const results = practiceQuestions.map((q, i) => {
+      const userAns = (practiceAnswers[i] || "").toLowerCase().trim();
+      const correctAns = (q.correctAnswer || "").toLowerCase().trim();
+      const isCorrect =
+        userAns === correctAns ||
+        correctAns.includes(userAns) ||
+        userAns.includes(correctAns);
+      const marks = q.marks || 1;
+      totalMarks += marks;
+      if (isCorrect) correct += marks;
+      const topic = q.topic || "General";
+      if (!topicScores[topic]) topicScores[topic] = { correct: 0, total: 0 };
+      topicScores[topic].total += marks;
+      if (isCorrect) topicScores[topic].correct += marks;
+      return { ...q, userAnswer: practiceAnswers[i] || "", isCorrect };
+    });
+    setPracticeReport({
+      results,
+      correct,
+      totalMarks,
+      topicScores,
+      timeTaken: practiceTimer,
+    });
+    setPracticeSubmitted(true);
+  }, [practiceQuestions, practiceAnswers, practiceTimer]);
+
+  // Auto-submit when time runs out
+  useEffect(() => {
+    if (
+      activeMode === "practice" &&
+      practiceQuestions.length > 0 &&
+      !practiceSubmitted
+    ) {
+      if (practiceTimer >= practiceTimeLimit * 60) {
+        submitPracticeExam();
+      }
+    }
+  }, [
+    practiceTimer,
+    practiceTimeLimit,
+    activeMode,
+    practiceQuestions.length,
+    practiceSubmitted,
+    submitPracticeExam,
+  ]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (practiceTimerRef.current) clearInterval(practiceTimerRef.current);
+    };
+  }, []);
+
+  // ─── Live Interview ───
+  const startInterview = useCallback(
+    async (persona, topic = null) => {
+      if (!geminiReady) return;
+      setActiveMode("interview");
+      setInterviewPersona(persona);
+      setInterviewTopic(topic);
+      setInterviewMessages([]);
+      setInterviewInput("");
+      setMobileShowContent(true);
+      setInterviewLoading(true);
+      try {
+        const topicCtx = topic
+          ? `Topic to interview on: ${topic.title}. Subtopics: ${topic.subtopics?.join(", ") || "general"}.`
+          : `Interview across all topics in ${moduleData?.title || slug}.`;
+        const sessionId = `interview-${slug}-${persona}-${Date.now()}`;
+        resetChatSession(sessionId);
+        const response = await sendChatMessage(
+          sessionId,
+          makeInterviewPrompt(moduleData?.title || slug, persona),
+          `Start the interview. ${topicCtx}`,
+        );
+        setInterviewMessages([{ role: "ai", content: response }]);
+      } catch (err) {
+        setInterviewMessages([{ role: "ai", content: `⚠️ ${err.message}` }]);
+      }
+      setInterviewLoading(false);
+    },
+    [geminiReady, slug, moduleData],
+  );
+
+  const sendInterviewMessage = useCallback(async () => {
+    if (!geminiReady || !interviewInput.trim() || interviewLoading) return;
+    const msg = interviewInput.trim();
+    setInterviewInput("");
+    setInterviewMessages((prev) => [...prev, { role: "user", content: msg }]);
+    setInterviewLoading(true);
+    try {
+      const sessionId = `interview-${slug}-${interviewPersona}-${interviewMessages.length}`;
+      // Reuse chat session via sessionId that includes persona
+      const actualSessionId = `interview-${slug}-${interviewPersona}`;
+      const response = await sendChatMessage(
+        actualSessionId,
+        makeInterviewPrompt(moduleData?.title || slug, interviewPersona),
+        msg,
+      );
+      setInterviewMessages((prev) => [
+        ...prev,
+        { role: "ai", content: response },
+      ]);
+    } catch (err) {
+      setInterviewMessages((prev) => [
+        ...prev,
+        { role: "ai", content: `⚠️ ${err.message}` },
+      ]);
+    }
+    setInterviewLoading(false);
+  }, [
+    geminiReady,
+    interviewInput,
+    interviewLoading,
+    slug,
+    interviewPersona,
+    interviewMessages.length,
+    moduleData,
+  ]);
+
   // ─── Discuss ───
   const handleChat = useCallback(async () => {
     if (!geminiReady || !chatInput.trim() || chatLoading) return;
@@ -477,6 +749,37 @@ Test UNDERSTANDING, not memorization.`,
                     }
                   </span>
                 </div>
+              </div>
+
+              {/* Practice & Interview buttons */}
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => {
+                    setActiveMode("practice");
+                    setMobileShowContent(true);
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium border transition-all ${
+                    activeMode === "practice"
+                      ? "border-brand-amber bg-brand-amber/15 text-brand-amber-light"
+                      : "border-dark-500/30 bg-dark-700/30 text-dark-300 hover:border-brand-amber/50 hover:text-brand-amber-light"
+                  }`}
+                >
+                  <ClipboardList className="w-3.5 h-3.5" /> Practice Exam
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveMode("interview");
+                    setInterviewPersona(null);
+                    setMobileShowContent(true);
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-medium border transition-all ${
+                    activeMode === "interview"
+                      ? "border-brand-indigo bg-brand-indigo/15 text-brand-indigo-light"
+                      : "border-dark-500/30 bg-dark-700/30 text-dark-300 hover:border-brand-indigo/50 hover:text-brand-indigo-light"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" /> Live Interview
+                </button>
               </div>
             </div>
           </div>
@@ -882,6 +1185,475 @@ Test UNDERSTANDING, not memorization.`,
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Practice Exam Mode */}
+            {activeMode === "practice" && (
+              <div className="space-y-4">
+                {/* Exam config */}
+                {practiceQuestions.length === 0 &&
+                  !loading &&
+                  !practiceSubmitted && (
+                    <div className="glass-card p-4 md:p-6 animate-fade-in">
+                      <div className="flex items-center gap-3 mb-4">
+                        <ClipboardList className="w-6 h-6 text-brand-amber" />
+                        <h3 className="text-lg font-bold text-white">
+                          Practice Exam
+                        </h3>
+                      </div>
+                      <p className="text-sm text-dark-200 mb-4">
+                        Timed exam covering all topics. No hints, no
+                        explanations during the test. Just like a real exam.
+                      </p>
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <label className="text-xs text-dark-300 mb-1 block">
+                            Questions
+                          </label>
+                          <div className="flex gap-2">
+                            {[5, 10, 15, 20].map((n) => (
+                              <button
+                                key={n}
+                                onClick={() => setPracticeQuestionCount(n)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                                  practiceQuestionCount === n
+                                    ? "border-brand-amber bg-brand-amber/15 text-brand-amber-light"
+                                    : "border-dark-500/30 bg-dark-700/30 text-dark-300 hover:border-dark-400"
+                                }`}
+                              >
+                                {n}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-dark-300 mb-1 block">
+                            Time Limit
+                          </label>
+                          <div className="flex gap-2">
+                            {[10, 15, 20, 30].map((m) => (
+                              <button
+                                key={m}
+                                onClick={() => setPracticeTimeLimit(m)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                                  practiceTimeLimit === m
+                                    ? "border-brand-amber bg-brand-amber/15 text-brand-amber-light"
+                                    : "border-dark-500/30 bg-dark-700/30 text-dark-300 hover:border-dark-400"
+                                }`}
+                              >
+                                {m}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={startPracticeExam}
+                        className="btn-primary flex items-center gap-2"
+                      >
+                        <Timer className="w-4 h-4" /> Start Exam
+                      </button>
+                    </div>
+                  )}
+
+                {loading && practiceQuestions.length === 0 && (
+                  <LoadingDots
+                    text={`Preparing ${practiceQuestionCount}-question exam`}
+                  />
+                )}
+
+                {/* Active exam */}
+                {practiceQuestions.length > 0 && !practiceSubmitted && (
+                  <div className="space-y-4">
+                    {/* Timer bar */}
+                    <div className="glass-card p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Timer
+                          className={`w-4 h-4 ${practiceTimer >= practiceTimeLimit * 60 * 0.8 ? "text-red-400 animate-pulse" : "text-brand-amber"}`}
+                        />
+                        <span className="text-sm font-mono text-white">
+                          {Math.floor(practiceTimer / 60)
+                            .toString()
+                            .padStart(2, "0")}
+                          :{(practiceTimer % 60).toString().padStart(2, "0")}
+                        </span>
+                        <span className="text-[10px] text-dark-400">
+                          / {practiceTimeLimit}:00
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-dark-300">
+                          {Object.keys(practiceAnswers).length}/
+                          {practiceQuestions.length} answered
+                        </span>
+                        <button
+                          onClick={submitPracticeExam}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-all"
+                        >
+                          Submit Exam
+                        </button>
+                      </div>
+                    </div>
+                    {/* Progress */}
+                    <div className="w-full bg-dark-700 rounded-full h-1.5">
+                      <div
+                        className="bg-brand-amber h-1.5 rounded-full transition-all"
+                        style={{
+                          width: `${(practiceTimer / (practiceTimeLimit * 60)) * 100}%`,
+                        }}
+                      />
+                    </div>
+                    {/* Question navigation */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {practiceQuestions.map((_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setPracticeIndex(i)}
+                          className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${
+                            practiceIndex === i
+                              ? "bg-brand-indigo text-white"
+                              : practiceAnswers[i]
+                                ? "bg-brand-emerald/20 text-brand-emerald border border-brand-emerald/30"
+                                : "bg-dark-700/50 text-dark-300 border border-dark-500/30 hover:border-dark-400"
+                          }`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Current question */}
+                    {(() => {
+                      const q = practiceQuestions[practiceIndex];
+                      if (!q) return null;
+                      return (
+                        <div className="glass-card p-4 md:p-6 animate-fade-in">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs text-dark-300">
+                              Q{practiceIndex + 1} of {practiceQuestions.length}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                  q.difficulty === "hard"
+                                    ? "bg-red-500/15 text-red-400"
+                                    : q.difficulty === "easy"
+                                      ? "bg-brand-emerald/15 text-brand-emerald"
+                                      : "bg-brand-amber/15 text-brand-amber-light"
+                                }`}
+                              >
+                                {q.difficulty}
+                              </span>
+                              {q.topic && (
+                                <span className="text-[10px] text-dark-400">
+                                  {q.topic}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-sm text-white font-medium mb-4">
+                            {q.question}
+                          </p>
+                          {(q.type === "mcq" || q.type === "true_false") &&
+                          q.options ? (
+                            <div className="space-y-2">
+                              {q.options.map((opt, oi) => (
+                                <button
+                                  key={oi}
+                                  onClick={() =>
+                                    setPracticeAnswers((prev) => ({
+                                      ...prev,
+                                      [practiceIndex]: opt,
+                                    }))
+                                  }
+                                  className={`w-full text-left px-4 py-3 rounded-xl border transition-all text-sm ${
+                                    practiceAnswers[practiceIndex] === opt
+                                      ? "border-brand-indigo bg-brand-indigo/10 text-white"
+                                      : "border-dark-500/30 bg-dark-700/30 text-dark-200 hover:border-dark-400"
+                                  }`}
+                                >
+                                  {String.fromCharCode(65 + oi)}. {opt}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <textarea
+                              value={practiceAnswers[practiceIndex] || ""}
+                              onChange={(e) =>
+                                setPracticeAnswers((prev) => ({
+                                  ...prev,
+                                  [practiceIndex]: e.target.value,
+                                }))
+                              }
+                              placeholder="Type your answer..."
+                              className="textarea-field min-h-[100px]"
+                            />
+                          )}
+                          <div className="flex gap-2 mt-4">
+                            <button
+                              onClick={() =>
+                                setPracticeIndex((i) => Math.max(0, i - 1))
+                              }
+                              disabled={practiceIndex === 0}
+                              className="btn-ghost text-xs"
+                            >
+                              ← Prev
+                            </button>
+                            <button
+                              onClick={() =>
+                                setPracticeIndex((i) =>
+                                  Math.min(practiceQuestions.length - 1, i + 1),
+                                )
+                              }
+                              disabled={
+                                practiceIndex === practiceQuestions.length - 1
+                              }
+                              className="btn-ghost text-xs"
+                            >
+                              Next →
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Exam results */}
+                {practiceSubmitted && practiceReport && (
+                  <div className="space-y-4 animate-fade-in">
+                    <div className="glass-card p-4 md:p-6 text-center">
+                      <Trophy className="w-10 h-10 text-brand-amber mx-auto mb-3" />
+                      <h3 className="text-xl font-bold text-white mb-2">
+                        Exam Results
+                      </h3>
+                      <p className="text-3xl font-bold mb-1">
+                        <span className="text-brand-emerald">
+                          {practiceReport.correct}
+                        </span>
+                        <span className="text-dark-300"> / </span>
+                        <span className="text-white">
+                          {practiceReport.totalMarks}
+                        </span>
+                      </p>
+                      <p className="text-sm text-dark-200 mb-1">
+                        {Math.round(
+                          (practiceReport.correct / practiceReport.totalMarks) *
+                            100,
+                        )}
+                        % score
+                      </p>
+                      <p className="text-xs text-dark-400">
+                        Completed in {Math.floor(practiceReport.timeTaken / 60)}
+                        m {practiceReport.timeTaken % 60}s
+                      </p>
+                    </div>
+
+                    {/* Topic-wise breakdown */}
+                    <div className="glass-card p-4 md:p-6">
+                      <h4 className="text-sm font-bold text-white mb-3">
+                        Topic Breakdown
+                      </h4>
+                      <div className="space-y-2">
+                        {Object.entries(practiceReport.topicScores).map(
+                          ([topic, score]) => (
+                            <div key={topic}>
+                              <div className="flex items-center justify-between text-xs mb-1">
+                                <span className="text-dark-200">{topic}</span>
+                                <span
+                                  className={`font-medium ${score.correct / score.total >= 0.7 ? "text-brand-emerald" : "text-red-400"}`}
+                                >
+                                  {score.correct}/{score.total}
+                                </span>
+                              </div>
+                              <div className="w-full bg-dark-700 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${score.correct / score.total >= 0.7 ? "bg-brand-emerald" : "bg-red-400"}`}
+                                  style={{
+                                    width: `${(score.correct / score.total) * 100}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Detailed question review */}
+                    <div className="glass-card p-4 md:p-6">
+                      <h4 className="text-sm font-bold text-white mb-3">
+                        Question Review
+                      </h4>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {practiceReport.results.map((r, i) => (
+                          <div
+                            key={i}
+                            className={`p-3 rounded-xl border ${r.isCorrect ? "border-brand-emerald/20 bg-brand-emerald/5" : "border-red-500/20 bg-red-500/5"}`}
+                          >
+                            <div className="flex items-start justify-between mb-1">
+                              <span className="text-xs font-medium text-white">
+                                Q{i + 1}. {r.question}
+                              </span>
+                              <span className="text-sm ml-2 flex-shrink-0">
+                                {r.isCorrect ? "✅" : "❌"}
+                              </span>
+                            </div>
+                            {!r.isCorrect && (
+                              <>
+                                <p className="text-[11px] text-dark-300 mt-1">
+                                  Your answer: {r.userAnswer || "(blank)"}
+                                </p>
+                                <p className="text-[11px] text-brand-emerald mt-0.5">
+                                  Correct: {r.correctAnswer}
+                                </p>
+                              </>
+                            )}
+                            <p className="text-[11px] text-dark-400 mt-1">
+                              {r.explanation}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setPracticeQuestions([]);
+                        setPracticeSubmitted(false);
+                        setPracticeReport(null);
+                        setPracticeAnswers({});
+                      }}
+                      className="btn-primary"
+                    >
+                      Take Another Exam
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Live Interview Mode */}
+            {activeMode === "interview" && (
+              <div className="space-y-4">
+                {/* Persona selection */}
+                {!interviewPersona && (
+                  <div className="glass-card p-4 md:p-6 animate-fade-in">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Users className="w-6 h-6 text-brand-indigo" />
+                      <h3 className="text-lg font-bold text-white">
+                        Choose Your Interviewer
+                      </h3>
+                    </div>
+                    <p className="text-sm text-dark-200 mb-4">
+                      Each interviewer has a unique personality. Pick one and
+                      practice like it's a real interview.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {Object.entries(INTERVIEWER_PERSONAS).map(
+                        ([key, persona]) => (
+                          <button
+                            key={key}
+                            onClick={() => startInterview(key, selectedTopic)}
+                            className="text-left p-4 rounded-xl border border-dark-500/30 bg-dark-700/30 hover:border-brand-indigo/50 hover:bg-dark-700/50 transition-all group"
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-2xl">{persona.emoji}</span>
+                              <span className="text-sm font-bold text-white group-hover:text-brand-indigo-light transition-colors">
+                                {persona.name}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-dark-300 line-clamp-2">
+                              {persona.style}
+                            </p>
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Active interview chat */}
+                {interviewPersona && (
+                  <div className="glass-card flex flex-col h-[calc(100vh-200px)] overflow-hidden">
+                    <div className="px-4 py-3 border-b border-dark-600/50 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">
+                          {INTERVIEWER_PERSONAS[interviewPersona]?.emoji}
+                        </span>
+                        <div>
+                          <h3 className="text-sm font-bold text-white">
+                            {INTERVIEWER_PERSONAS[interviewPersona]?.name}
+                          </h3>
+                          <p className="text-[10px] text-dark-400">
+                            {interviewTopic
+                              ? `Topic: ${interviewTopic.title}`
+                              : moduleData?.title}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setInterviewPersona(null);
+                          setInterviewMessages([]);
+                        }}
+                        className="text-[10px] px-2 py-1 rounded bg-dark-600/50 text-dark-300 hover:text-white transition-all"
+                      >
+                        End Interview
+                      </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                      {interviewMessages.map((msg, i) => (
+                        <div
+                          key={i}
+                          className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                        >
+                          <div
+                            className={`max-w-[85%] ${msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"}`}
+                          >
+                            {msg.role === "ai" ? (
+                              <MarkdownRenderer content={msg.content} />
+                            ) : (
+                              <p className="text-sm whitespace-pre-wrap">
+                                {msg.content}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {interviewLoading && (
+                        <div className="flex justify-start">
+                          <div className="chat-bubble-ai">
+                            <LoadingDots />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 border-t border-dark-600/50">
+                      <div className="flex gap-2">
+                        <input
+                          value={interviewInput}
+                          onChange={(e) => setInterviewInput(e.target.value)}
+                          onKeyDown={(e) =>
+                            e.key === "Enter" &&
+                            !e.shiftKey &&
+                            sendInterviewMessage()
+                          }
+                          placeholder="Answer the question..."
+                          className="input-field text-sm"
+                          disabled={interviewLoading}
+                        />
+                        <button
+                          onClick={sendInterviewMessage}
+                          disabled={interviewLoading || !interviewInput.trim()}
+                          className="btn-primary px-4"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

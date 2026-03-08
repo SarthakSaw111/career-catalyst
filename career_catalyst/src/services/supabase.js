@@ -39,16 +39,14 @@ export async function signUp(email, password) {
   if (data?.user) {
     userId = data.user.id;
     // Create profile row
-    await supabase
-      .from("profiles")
-      .upsert(
-        {
-          id: userId,
-          name: email.split("@")[0],
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" },
-      );
+    await supabase.from("profiles").upsert(
+      {
+        id: userId,
+        name: email.split("@")[0],
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
   }
   return data;
 }
@@ -63,16 +61,14 @@ export async function signIn(email, password) {
   if (data?.user) {
     userId = data.user.id;
     // Ensure profile exists
-    await supabase
-      .from("profiles")
-      .upsert(
-        {
-          id: userId,
-          name: email.split("@")[0],
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" },
-      );
+    await supabase.from("profiles").upsert(
+      {
+        id: userId,
+        name: email.split("@")[0],
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
   }
   return data;
 }
@@ -207,11 +203,13 @@ export async function getModule(moduleId) {
 
 export async function createModule(moduleData) {
   if (!supabase) return null;
+  // Strip 'id' — let Supabase auto-generate a UUID
+  const { id, ...rest } = moduleData;
   const { data, error } = await supabase
     .from("modules")
     .insert({
       user_id: getUserId(),
-      ...moduleData,
+      ...rest,
       is_builtin: false,
       created_at: new Date().toISOString(),
     })
@@ -227,10 +225,14 @@ export async function createModule(moduleData) {
 
 export async function updateModule(moduleId, updates) {
   if (!supabase) return null;
+  // Use slug for lookup since local ID may not match Supabase UUID
+  const slug = updates.slug || moduleId;
+  const { id, ...safeUpdates } = updates;
   const { data, error } = await supabase
     .from("modules")
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq("id", moduleId)
+    .update({ ...safeUpdates, updated_at: new Date().toISOString() })
+    .eq("user_id", getUserId())
+    .eq("slug", slug)
     .select()
     .single();
 
@@ -243,11 +245,12 @@ export async function updateModule(moduleId, updates) {
 
 export async function deleteModule(moduleId) {
   if (!supabase) return false;
+  // Use slug for deletion since local ID may not match Supabase UUID
   const { error } = await supabase
     .from("modules")
     .delete()
-    .eq("id", moduleId)
     .eq("user_id", getUserId())
+    .eq("slug", moduleId)
     .eq("is_builtin", false);
 
   if (error) {
@@ -350,4 +353,63 @@ export async function saveRemoteStreak(streakData) {
 
   if (error) return false;
   return true;
+}
+
+// ─── Token Usage ───
+export async function saveTokenUsage(entry) {
+  if (!supabase || !getUserId()) return false;
+  const date = new Date().toISOString().split("T")[0];
+  // Upsert: aggregate per user+date+model
+  const { data: existing } = await supabase
+    .from("token_usage")
+    .select(
+      "prompt_tokens, completion_tokens, thinking_tokens, total_tokens, call_count",
+    )
+    .eq("user_id", getUserId())
+    .eq("date", date)
+    .eq("model", entry.model)
+    .maybeSingle();
+
+  const row = {
+    user_id: getUserId(),
+    date,
+    model: entry.model,
+    prompt_tokens: (existing?.prompt_tokens || 0) + (entry.prompt || 0),
+    completion_tokens:
+      (existing?.completion_tokens || 0) + (entry.completion || 0),
+    thinking_tokens: (existing?.thinking_tokens || 0) + (entry.thinking || 0),
+    total_tokens: (existing?.total_tokens || 0) + (entry.total || 0),
+    call_count: (existing?.call_count || 0) + 1,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase
+    .from("token_usage")
+    .upsert(row, { onConflict: "user_id,date,model" });
+
+  if (error) {
+    console.error("Token usage save error:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function getTokenUsageHistory(days = 30) {
+  if (!supabase || !getUserId()) return [];
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceStr = since.toISOString().split("T")[0];
+
+  const { data, error } = await supabase
+    .from("token_usage")
+    .select("*")
+    .eq("user_id", getUserId())
+    .gte("date", sinceStr)
+    .order("date", { ascending: false });
+
+  if (error) {
+    console.error("Token usage read error:", error);
+    return [];
+  }
+  return data || [];
 }

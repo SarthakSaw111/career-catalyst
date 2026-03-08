@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import * as sb from "../services/supabase";
 
 let genAI = null;
 let currentModel = null;
@@ -48,6 +49,8 @@ function trackUsage(response) {
   tokenUsage.sessionTotal.thinking += entry.thinking;
   tokenUsage.calls.push(entry);
   if (tokenUsage.calls.length > 50) tokenUsage.calls.shift();
+  // Persist to Supabase (fire-and-forget)
+  sb.saveTokenUsage(entry).catch(() => {});
   // Notify listeners
   tokenUsage.listeners.forEach((fn) =>
     fn({ ...tokenUsage.sessionTotal, lastCall: entry }),
@@ -56,6 +59,10 @@ function trackUsage(response) {
 
 export function getTokenUsage() {
   return { ...tokenUsage.sessionTotal, calls: [...tokenUsage.calls] };
+}
+
+export async function getTokenUsageHistory(days = 30) {
+  return sb.getTokenUsageHistory(days);
 }
 
 export function onTokenUsageUpdate(callback) {
